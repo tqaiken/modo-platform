@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  # ── PostgreSQL ──
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: testforge
+      POSTGRES_PASSWORD: testforge_secret
+      POSTGRES_DB: testforge
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U testforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend (FastAPI) ──
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://testforge:testforge_secret@db:5432/testforge
+      DB_ECHO: "false"
+      JWT_SECRET: change-me-in-production-use-openssl-rand-hex-32
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: "480"
+      R2_ENDPOINT_URL: ${R2_ENDPOINT_URL:-https://example.r2.cloudflarestorage.com}
+      R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-placeholder}
+      R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-placeholder}
+      R2_BUCKET_NAME: ${R2_BUCKET_NAME:-testforge-media}
+      R2_PUBLIC_URL: ${R2_PUBLIC_URL:-https://pub.example.r2.dev}
+      CORS_ORIGINS: '["http://localhost:5173","http://localhost:3000","http://localhost"]'
+      PORT: "8000"
+    ports:
+      - "8000:8000"
+
+  # ── Frontend (Vite dev / Nginx prod) ──
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  pgdata:

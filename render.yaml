@@ -1,0 +1,51 @@
+# Render Blueprint — deploy backend + PostgreSQL
+# Save as render.yaml in the repo root
+#
+# Usage:
+#   1. Push to GitHub
+#   2. Go to render.com → New → Blueprint
+#   3. Connect repo → Render detects render.yaml
+#   4. Set R2 secrets in Render dashboard
+
+databases:
+  - name: testforge-db
+    databaseName: testforge
+    plan: free
+    ipAllowList: []  # allow all (Render internal)
+
+services:
+  - type: web
+    name: testforge-api
+    runtime: python
+    plan: free
+    region: frankfurt  # or oregon, singapore
+    buildCommand: |
+      pip install -r requirements.txt
+    startCommand: |
+      alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: testforge-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "480"
+      - key: R2_ENDPOINT_URL
+        sync: false  # set manually
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_PUBLIC_URL
+        sync: false
+      - key: CORS_ORIGINS
+        value: '["https://testforge.vercel.app"]'
+      - key: PYTHON_VERSION
+        value: "3.11"
