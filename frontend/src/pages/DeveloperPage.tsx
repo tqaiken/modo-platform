@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api";
 import { getStatusBadge, QuestionStatus } from "../utils/status";
-import { Plus, Search, Filter } from "lucide-react";
+import { Plus } from "lucide-react";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 

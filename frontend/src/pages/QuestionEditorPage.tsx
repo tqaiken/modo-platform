@@ -12,7 +12,6 @@ import {
   Eye,
   EyeOff,
   CheckCircle2,
-  Image as ImageIcon,
 } from "lucide-react";
 import toast from "react-hot-toast";
 

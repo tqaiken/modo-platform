@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../services/api";
-import { getStatusBadge, QuestionStatus } from "../utils/status";
+import { QuestionStatus } from "../utils/status";
 import {
   Download,
   Search,
   Package,
-  Check,
   Eye,
 } from "lucide-react";
 import toast from "react-hot-toast";
