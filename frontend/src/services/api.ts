@@ -1,13 +1,15 @@
 import axios from "axios";
 
+const API_URL = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+
 export const api = axios.create({
-  baseURL: "",
+  baseURL: API_URL,
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// ── Response interceptor: handle 401 ──
+// Response interceptor: handle 401
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -20,7 +22,7 @@ api.interceptors.response.use(
   }
 );
 
-// ── Upload helper ──
+// Upload helper
 export async function uploadMedia(
   questionId: number,
   file: File
