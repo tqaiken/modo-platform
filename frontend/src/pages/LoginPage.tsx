@@ -38,11 +38,11 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg">
+          <div className="mx-auto mb-4 flex h-20 w-40 items-center justify-center overflow-hidden rounded-2xl bg-white px-4 shadow-lg">
             {LOGO_SRC}
           </div>
 
-          <h1 className="text-2xl font-bold text-gray-900">МОДО</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Мониторинг образовательных достижений обучающихся</h1>
 
           <p className="text-sm text-gray-500">
             Платформа разработки тестовых заданий
