@@ -1,4 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field
+
 from app.models.user import UserRole
 
 
@@ -7,6 +8,13 @@ class UserCreate(BaseModel):
     full_name: str = Field(min_length=2, max_length=255)
     password: str = Field(min_length=8, max_length=128)
     role: UserRole = UserRole.DEVELOPER
+
+
+class UserCreateByAdmin(BaseModel):
+    email: EmailStr
+    full_name: str = Field(min_length=2, max_length=255)
+    password: str = Field(min_length=8, max_length=128)
+    role: UserRole
 
 
 class UserLogin(BaseModel):
