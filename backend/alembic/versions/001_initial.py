@@ -8,6 +8,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "001_initial"
@@ -16,17 +17,44 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-def upgrade() -> None:
-    # ── ENUM types ──
-    user_role_enum = sa.Enum("DEVELOPER", "VERIFIER", "CURATOR", name="userrole")
-    question_status_enum = sa.Enum("DRAFT", "VERIFICATION", "REVISION", "IN_BANK", name="questionstatus")
-    language_enum = sa.Enum("RU", "KZ", name="language")
-    log_action_enum = sa.Enum(
-        "CREATED", "UPDATED", "SUBMITTED", "APPROVED", "REJECTED",
-        "RETURNED", "EDITED_BY_VERIFIER", "STATUS_CHANGED",
-        "MEDIA_UPLOADED", "MEDIA_DELETED",
-        name="logaction",
-    )
+user_role_enum = postgresql.ENUM(
+    "DEVELOPER",
+    "VERIFIER",
+    "CURATOR",
+    name="userrole",
+    create_type=False,
+)
+
+question_status_enum = postgresql.ENUM(
+    "DRAFT",
+    "VERIFICATION",
+    "REVISION",
+    "IN_BANK",
+    name="questionstatus",
+    create_type=False,
+)
+
+language_enum = postgresql.ENUM(
+    "RU",
+    "KZ",
+    name="language",
+    create_type=False,
+)
+
+log_action_enum = postgresql.ENUM(
+    "CREATED",
+    "UPDATED",
+    "SUBMITTED",
+    "APPROVED",
+    "REJECTED",
+    "RETURNED",
+    "EDITED_BY_VERIFIER",
+    "STATUS_CHANGED",
+    "MEDIA_UPLOADED",
+    "MEDIA_DELETED",
+    name="logaction",
+    create_type=False,
+)
 
     user_role_enum.create(op.get_bind(), checkfirst=True)
     question_status_enum.create(op.get_bind(), checkfirst=True)
