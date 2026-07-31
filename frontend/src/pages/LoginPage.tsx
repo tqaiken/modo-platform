@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { createElement, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { Mail, Lock, AlertCircle } from "lucide-react";
 import toast from "react-hot-toast";
 
-const LOGO_SRC = "/logo.svg";
+const LOGO_SRC = "/logo.png";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -36,20 +36,24 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary-50 to-primary-100 p-4">
       <div className="w-full max-w-md">
-        {/* Logo */}
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-20 w-40 items-center justify-center overflow-hidden rounded-2xl bg-white px-4 shadow-lg">
-            {LOGO_SRC}
+            {createElement("img", {
+              src: LOGO_SRC,
+              alt: "Логотип",
+              className: "max-h-full max-w-full object-contain",
+            })}
           </div>
 
-          <h1 className="text-2xl font-bold text-gray-900">Мониторинг образовательных достижений обучающихся</h1>
+          <h1 className="text-2xl font-bold leading-tight text-gray-900">
+            Мониторинг образовательных достижений обучающихся
+          </h1>
 
-          <p className="text-sm text-gray-500">
+          <p className="mt-2 text-sm text-gray-500">
             Платформа разработки тестовых заданий
           </p>
         </div>
 
-        {/* Form */}
         <div className="card">
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
