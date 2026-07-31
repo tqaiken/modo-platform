@@ -23,6 +23,26 @@ class Question(Base):
     __tablename__ = "questions"
 
     id = Column(Integer, primary_key=True, index=True)
+
+    variant_id = Column(
+        Integer,
+        ForeignKey("variants.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+
+    variant = relationship(
+        "Variant",
+        back_populates="questions",
+        lazy="joined",
+    )
+
+    order_number = Column(
+        Integer,
+        nullable=False,
+        default=1,
+    )
+
     title = Column(String(500), nullable=False)
     body = Column(Text, nullable=False)           # supports LaTeX $...$
     body_html = Column(Text, nullable=True)        # pre-rendered HTML+KaTeX
