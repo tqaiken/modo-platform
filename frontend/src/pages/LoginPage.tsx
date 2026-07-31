@@ -1,12 +1,15 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
-import { Zap, Mail, Lock, AlertCircle } from "lucide-react";
+import { Mail, Lock, AlertCircle } from "lucide-react";
 import toast from "react-hot-toast";
+
+const LOGO_SRC = "/logo.svg";
 
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -35,10 +38,12 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-600 shadow-lg">
-            <Zap className="h-8 w-8 text-white" />
+          <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-lg">
+            {LOGO_SRC}
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">TestForge</h1>
+
+          <h1 className="text-2xl font-bold text-gray-900">МОДО</h1>
+
           <p className="text-sm text-gray-500">
             Платформа разработки тестовых заданий
           </p>
@@ -58,8 +63,10 @@ export default function LoginPage() {
               <label className="mb-1.5 block text-sm font-medium text-gray-700">
                 Email
               </label>
+
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+
                 <input
                   type="email"
                   value={email}
@@ -75,8 +82,10 @@ export default function LoginPage() {
               <label className="mb-1.5 block text-sm font-medium text-gray-700">
                 Пароль
               </label>
+
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+
                 <input
                   type="password"
                   value={password}
@@ -96,16 +105,6 @@ export default function LoginPage() {
               {loading ? "Вход..." : "Войти"}
             </button>
           </form>
-
-          <p className="mt-4 text-center text-sm text-gray-500">
-            Нет аккаунта?{" "}
-            <Link
-              to="/register"
-              className="font-medium text-primary-600 hover:text-primary-500"
-            >
-              Зарегистрироваться
-            </Link>
-          </p>
         </div>
       </div>
     </div>
