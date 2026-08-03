@@ -6,11 +6,13 @@ import {
 } from "react-router-dom";
 import { clsx } from "clsx";
 import {
-  FileEdit,
+  ClipboardList,
   FolderOpen,
   LayoutDashboard,
   LogOut,
+  Plus,
   ShieldCheck,
+  Target,
 } from "lucide-react";
 
 import { useAuth } from "../../contexts/AuthContext";
@@ -30,18 +32,23 @@ const ROLE_NAV: Record<string, NavigationItem[]> = {
       label: "Панель управления",
       icon: LayoutDashboard,
     },
+    {
+      to: "/admin/learning-objectives",
+      label: "ОРО",
+      icon: Target,
+    },
   ],
 
   DEVELOPER: [
     {
       to: "/developer",
-      label: "Мои вопросы",
-      icon: FileEdit,
+      label: "Мои варианты",
+      icon: ClipboardList,
     },
     {
-      to: "/questions/new",
-      label: "Новый вопрос",
-      icon: FileEdit,
+      to: "/variants/new",
+      label: "Новый вариант",
+      icon: Plus,
     },
   ],
 
@@ -83,12 +90,27 @@ export default function DashboardLayout() {
   }
 
   const currentUser = user;
-  const navItems = ROLE_NAV[currentUser.role] ?? [];
+  const navItems =
+    ROLE_NAV[currentUser.role] ?? [];
 
 
-  const isRouteActive = (path: string): boolean => {
+  const isRouteActive = (
+    path: string
+  ): boolean => {
     if (location.pathname === path) {
       return true;
+    }
+
+    /*
+     * Корневые страницы разделов не подсвечиваются
+     * на их отдельных дочерних страницах, если
+     * дочерняя страница имеет собственный пункт меню.
+     */
+    if (
+      path === "/admin" ||
+      path === "/developer"
+    ) {
+      return false;
     }
 
     return (
@@ -96,6 +118,11 @@ export default function DashboardLayout() {
       location.pathname.startsWith(`${path}/`)
     );
   };
+
+
+  const secondaryUserText =
+    currentUser.email ??
+    `Логин: ${currentUser.username}`;
 
 
   return (
@@ -108,7 +135,8 @@ export default function DashboardLayout() {
             {createElement("img", {
               src: LOGO_SRC,
               alt: "Логотип МОДО",
-              className: "h-full w-full object-contain",
+              className:
+                "h-full w-full object-contain",
             })}
           </div>
 
@@ -127,7 +155,8 @@ export default function DashboardLayout() {
         <nav className="flex-1 space-y-1 px-3 py-4">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = isRouteActive(item.to);
+            const isActive =
+              isRouteActive(item.to);
 
             return (
               <Link
@@ -142,7 +171,9 @@ export default function DashboardLayout() {
               >
                 <Icon className="h-5 w-5 shrink-0" />
 
-                <span>{item.label}</span>
+                <span>
+                  {item.label}
+                </span>
               </Link>
             );
           })}
@@ -156,8 +187,14 @@ export default function DashboardLayout() {
             </p>
 
             <p className="truncate text-xs text-gray-500">
-              {currentUser.email}
+              {secondaryUserText}
             </p>
+
+            {currentUser.email && (
+              <p className="mt-0.5 truncate text-xs text-gray-400">
+                Логин: {currentUser.username}
+              </p>
+            )}
 
             <span className="badge mt-2 bg-primary-100 text-primary-800">
               {ROLE_LABELS[currentUser.role] ??
@@ -172,7 +209,9 @@ export default function DashboardLayout() {
           >
             <LogOut className="h-4 w-4" />
 
-            <span>Выйти</span>
+            <span>
+              Выйти
+            </span>
           </button>
         </div>
       </aside>

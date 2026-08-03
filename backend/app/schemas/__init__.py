@@ -8,12 +8,18 @@ from app.schemas.user import (
 )
 
 from app.schemas.question import (
+    QuestionOption,
     QuestionCreate,
     QuestionUpdate,
     QuestionRead,
     QuestionSubmit,
     QuestionReview,
     QuestionList,
+    BilingualQuestionOption,
+    VariantQuestionCreate,
+    VariantQuestionUpdate,
+    VariantQuestionRead,
+    VariantQuestionList,
 )
 
 from app.schemas.variant import (
@@ -22,6 +28,13 @@ from app.schemas.variant import (
     VariantRead,
     VariantList,
     VariantDashboard,
+)
+
+from app.schemas.learning_objective import (
+    LearningObjectiveCreate,
+    LearningObjectiveUpdate,
+    LearningObjectiveRead,
+    LearningObjectiveList,
 )
 
 from app.schemas.media import MediaFileRead
@@ -39,17 +52,27 @@ __all__ = [
     "UserLogin",
     "UserRead",
     "TokenResponse",
+    "QuestionOption",
     "QuestionCreate",
     "QuestionUpdate",
     "QuestionRead",
     "QuestionSubmit",
     "QuestionReview",
     "QuestionList",
+    "BilingualQuestionOption",
+    "VariantQuestionCreate",
+    "VariantQuestionUpdate",
+    "VariantQuestionRead",
+    "VariantQuestionList",
     "VariantCreate",
     "VariantUpdate",
     "VariantRead",
     "VariantList",
     "VariantDashboard",
+    "LearningObjectiveCreate",
+    "LearningObjectiveUpdate",
+    "LearningObjectiveRead",
+    "LearningObjectiveList",
     "MediaFileRead",
     "CommentCreate",
     "CommentRead",

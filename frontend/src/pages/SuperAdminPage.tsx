@@ -5,12 +5,16 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+
+import { Link } from "react-router-dom";
+
 import {
   BookOpen,
   Pencil,
   Plus,
   RefreshCw,
   ShieldCheck,
+  Target,
   UserCheck,
   Users,
   X,
@@ -18,7 +22,6 @@ import {
 import toast from "react-hot-toast";
 
 import { api } from "../services/api";
-
 
 type UserRole =
   | "SUPER_ADMIN"
@@ -492,6 +495,30 @@ export default function SuperAdminPage() {
         </button>
       </div>
 
+      <section className="card flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary-100 text-primary-700">
+            <Target className="h-5 w-5" />
+          </div>
+
+          <div>
+            <h2 className="font-semibold text-gray-900">
+              Ожидаемые результаты обучения
+            </h2>
+
+            <p className="text-sm text-gray-500">
+              Создание и редактирование ОРО по предметам
+            </p>
+          </div>
+        </div>
+
+        <Link
+          to="/admin/learning-objectives"
+          className="btn-secondary"
+        >
+          Управление ОРО
+        </Link>
+      </section>
 
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <DashboardCard

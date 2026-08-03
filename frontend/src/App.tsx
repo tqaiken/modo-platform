@@ -1,43 +1,69 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import type { ReactNode } from "react";
+import {
+  Navigate,
+  Route,
+  Routes,
+} from "react-router-dom";
 
-import { useAuth } from "./contexts/AuthContext";
 import DashboardLayout from "./components/dashboard/DashboardLayout";
+import { useAuth } from "./contexts/AuthContext";
 
-import LoginPage from "./pages/LoginPage";
-import SuperAdminPage from "./pages/SuperAdminPage";
-import DeveloperPage from "./pages/DeveloperPage";
-import VerifierPage from "./pages/VerifierPage";
 import CuratorPage from "./pages/CuratorPage";
+import DeveloperPage from "./pages/DeveloperPage";
+import LearningObjectivesPage from "./pages/LearningObjectivesPage";
+import LoginPage from "./pages/LoginPage";
 import QuestionEditorPage from "./pages/QuestionEditorPage";
 import QuestionViewPage from "./pages/QuestionViewPage";
+import SuperAdminPage from "./pages/SuperAdminPage";
+import VariantCreatePage from "./pages/VariantCreatePage";
+import VariantDetailPage from "./pages/VariantDetailPage";
+import VerifierPage from "./pages/VerifierPage";
+
+
+type ProtectedRouteProps = {
+  children: ReactNode;
+  allowedRoles?: string[];
+};
+
+
+function LoadingScreen() {
+  return (
+    <div className="flex h-screen items-center justify-center">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
+    </div>
+  );
+}
 
 
 function ProtectedRoute({
   children,
   allowedRoles,
-}: {
-  children: React.ReactNode;
-  allowedRoles?: string[];
-}) {
+}: ProtectedRouteProps) {
   const { user, loading } = useAuth();
 
   if (loading) {
+    return <LoadingScreen />;
+  }
+
+  if (user === null) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
-      </div>
+      <Navigate
+        to="/login"
+        replace
+      />
     );
   }
 
-  if (!user) {
-    return <Navigate to="/login" replace />;
-  }
-
   if (
-    allowedRoles &&
+    allowedRoles !== undefined &&
     !allowedRoles.includes(user.role)
   ) {
-    return <Navigate to="/" replace />;
+    return (
+      <Navigate
+        to="/"
+        replace
+      />
+    );
   }
 
   return <>{children}</>;
@@ -48,15 +74,16 @@ function DefaultRedirect() {
   const { user, loading } = useAuth();
 
   if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
-  if (!user) {
-    return <Navigate to="/login" replace />;
+  if (user === null) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+      />
+    );
   }
 
   const roleRedirects: Record<string, string> = {
@@ -66,9 +93,12 @@ function DefaultRedirect() {
     CURATOR: "/curator",
   };
 
+  const destination =
+    roleRedirects[user.role] ?? "/login";
+
   return (
     <Navigate
-      to={roleRedirects[user.role] || "/login"}
+      to={destination}
       replace
     />
   );
@@ -78,14 +108,25 @@ function DefaultRedirect() {
 export default function App() {
   return (
     <Routes>
-      {/* Public */}
+      {/* Public routes */}
       <Route
         path="/login"
         element={<LoginPage />}
       />
 
-      {/* Protected layout */}
       <Route
+        path="/register"
+        element={
+          <Navigate
+            to="/login"
+            replace
+          />
+        }
+      />
+
+      {/* Protected application */}
+      <Route
+        path="/"
         element={
           <ProtectedRoute>
             <DashboardLayout />
@@ -99,7 +140,7 @@ export default function App() {
 
         {/* Super Admin */}
         <Route
-          path="/admin"
+          path="admin"
           element={
             <ProtectedRoute
               allowedRoles={["SUPER_ADMIN"]}
@@ -109,9 +150,20 @@ export default function App() {
           }
         />
 
-        {/* Developer */}
         <Route
-          path="/developer"
+          path="admin/learning-objectives"
+          element={
+            <ProtectedRoute
+              allowedRoles={["SUPER_ADMIN"]}
+            >
+              <LearningObjectivesPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Developer dashboard */}
+        <Route
+          path="developer"
           element={
             <ProtectedRoute
               allowedRoles={["DEVELOPER"]}
@@ -121,8 +173,33 @@ export default function App() {
           }
         />
 
+        {/* Create variant */}
         <Route
-          path="/questions/new"
+          path="variants/new"
+          element={
+            <ProtectedRoute
+              allowedRoles={["DEVELOPER"]}
+            >
+              <VariantCreatePage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Variant details */}
+        <Route
+          path="variants/:variantId"
+          element={
+            <ProtectedRoute
+              allowedRoles={["DEVELOPER"]}
+            >
+              <VariantDetailPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Create question inside variant */}
+        <Route
+          path="variants/:variantId/questions/new"
           element={
             <ProtectedRoute
               allowedRoles={["DEVELOPER"]}
@@ -132,8 +209,9 @@ export default function App() {
           }
         />
 
+        {/* Edit question inside variant */}
         <Route
-          path="/questions/:id/edit"
+          path="variants/:variantId/questions/:questionId/edit"
           element={
             <ProtectedRoute
               allowedRoles={["DEVELOPER"]}
@@ -145,7 +223,7 @@ export default function App() {
 
         {/* Verifier */}
         <Route
-          path="/verifier"
+          path="verifier"
           element={
             <ProtectedRoute
               allowedRoles={["VERIFIER"]}
@@ -157,7 +235,7 @@ export default function App() {
 
         {/* Curator */}
         <Route
-          path="/curator"
+          path="curator"
           element={
             <ProtectedRoute
               allowedRoles={["CURATOR"]}
@@ -167,9 +245,9 @@ export default function App() {
           }
         />
 
-        {/* Shared */}
+        {/* Legacy shared question view */}
         <Route
-          path="/questions/:id"
+          path="questions/:id"
           element={
             <ProtectedRoute>
               <QuestionViewPage />
@@ -178,16 +256,15 @@ export default function App() {
         />
       </Route>
 
-      {/* Public registration is disabled */}
-      <Route
-        path="/register"
-        element={<Navigate to="/login" replace />}
-      />
-
       {/* Catch-all */}
       <Route
         path="*"
-        element={<Navigate to="/" replace />}
+        element={
+          <Navigate
+            to="/"
+            replace
+          />
+        }
       />
     </Routes>
   );
