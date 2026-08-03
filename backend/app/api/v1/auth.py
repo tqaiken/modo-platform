@@ -34,6 +34,31 @@ SUBJECT_REQUIRED_ROLES = {
 }
 
 
+def get_active_subject(
+    db: Session,
+    subject_id: int,
+) -> Subject:
+    subject = (
+        db.query(Subject)
+        .filter(
+            Subject.id == subject_id,
+            Subject.is_active.is_(True),
+        )
+        .first()
+    )
+
+    if subject is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "Активный предмет с указанным ID "
+                "не найден."
+            ),
+        )
+
+    return subject
+
+
 @router.post(
     "/register",
     status_code=status.HTTP_403_FORBIDDEN,
@@ -67,7 +92,7 @@ def bootstrap_super_admin(
     """
     existing_user = db.query(User).first()
 
-    if existing_user:
+    if existing_user is not None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
@@ -77,11 +102,13 @@ def bootstrap_super_admin(
         )
 
     user = User(
+        username=payload.username,
         email=payload.email,
         full_name=payload.full_name,
         hashed_password=hash_password(payload.password),
         role=UserRole.SUPER_ADMIN,
         subject_id=None,
+        is_active=True,
     )
 
     db.add(user)
@@ -109,10 +136,10 @@ def create_user_by_super_admin(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Создание пользователя.
+    Создание пользователя супер-администратором.
 
-    Доступно только SUPER_ADMIN.
-    Для DEVELOPER и VERIFIER предмет обязателен.
+    Логин обязателен и уникален.
+    Email необязателен, но уникален при заполнении.
     """
     if current_user.role != UserRole.SUPER_ADMIN:
         raise HTTPException(
@@ -123,22 +150,32 @@ def create_user_by_super_admin(
             ),
         )
 
-    existing_user = (
+    existing_username = (
         db.query(User)
-        .filter(User.email == payload.email)
+        .filter(User.username == payload.username)
         .first()
     )
 
-    if existing_user:
+    if existing_username is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=(
-                "Пользователь с таким email "
-                "уже существует."
-            ),
+            detail="Пользователь с таким логином уже существует.",
         )
 
-    subject = None
+    if payload.email is not None:
+        existing_email = (
+            db.query(User)
+            .filter(User.email == payload.email)
+            .first()
+        )
+
+        if existing_email is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Пользователь с таким email уже существует.",
+            )
+
+    subject_id = None
 
     if payload.role in SUBJECT_REQUIRED_ROLES:
         if payload.subject_id is None:
@@ -150,34 +187,21 @@ def create_user_by_super_admin(
                 ),
             )
 
-        subject = (
-            db.query(Subject)
-            .filter(
-                Subject.id == payload.subject_id,
-                Subject.is_active.is_(True),
-            )
-            .first()
+        subject = get_active_subject(
+            db,
+            payload.subject_id,
         )
 
-        if subject is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=(
-                    "Активный предмет с указанным ID "
-                    "не найден."
-                ),
-            )
+        subject_id = subject.id
 
     user = User(
+        username=payload.username,
         email=payload.email,
         full_name=payload.full_name,
         hashed_password=hash_password(payload.password),
         role=payload.role,
-        subject_id=(
-            subject.id
-            if subject is not None
-            else None
-        ),
+        subject_id=subject_id,
+        is_active=True,
     )
 
     db.add(user)
@@ -234,12 +258,14 @@ def update_user_by_super_admin(
     """
     Изменение пользователя супер-администратором.
 
-    SUPER_ADMIN может:
-    - изменить ФИО;
-    - изменить роль;
-    - назначить или изменить предмет;
-    - сбросить пароль;
-    - активировать или отключить аккаунт.
+    Можно изменить:
+    - логин;
+    - email;
+    - ФИО;
+    - пароль;
+    - роль;
+    - предмет;
+    - активность аккаунта.
     """
     if current_user.role != UserRole.SUPER_ADMIN:
         raise HTTPException(
@@ -272,6 +298,51 @@ def update_user_by_super_admin(
             detail="Не переданы данные для изменения.",
         )
 
+    if "username" in update_data:
+        new_username = update_data["username"]
+
+        duplicate_username = (
+            db.query(User)
+            .filter(
+                User.username == new_username,
+                User.id != user.id,
+            )
+            .first()
+        )
+
+        if duplicate_username is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Пользователь с таким логином "
+                    "уже существует."
+                ),
+            )
+
+    if (
+        "email" in update_data
+        and update_data["email"] is not None
+    ):
+        new_email = update_data["email"]
+
+        duplicate_email = (
+            db.query(User)
+            .filter(
+                User.email == new_email,
+                User.id != user.id,
+            )
+            .first()
+        )
+
+        if duplicate_email is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    "Пользователь с таким email "
+                    "уже существует."
+                ),
+            )
+
     effective_role = update_data.get(
         "role",
         user.role,
@@ -282,7 +353,6 @@ def update_user_by_super_admin(
     else:
         effective_subject_id = user.subject_id
 
-    # Для разработчика и верификатора предмет обязателен.
     if effective_role in SUBJECT_REQUIRED_ROLES:
         if effective_subject_id is None:
             raise HTTPException(
@@ -293,29 +363,15 @@ def update_user_by_super_admin(
                 ),
             )
 
-        subject = (
-            db.query(Subject)
-            .filter(
-                Subject.id == effective_subject_id,
-                Subject.is_active.is_(True),
-            )
-            .first()
+        subject = get_active_subject(
+            db,
+            effective_subject_id,
         )
 
-        if subject is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=(
-                    "Активный предмет с указанным ID "
-                    "не найден."
-                ),
-            )
-
-    # У куратора и супер-администратора предмет очищается.
+        effective_subject_id = subject.id
     else:
         effective_subject_id = None
 
-    # SUPER_ADMIN не может отключить собственный аккаунт.
     if (
         user.id == current_user.id
         and update_data.get("is_active") is False
@@ -328,7 +384,6 @@ def update_user_by_super_admin(
             ),
         )
 
-    # SUPER_ADMIN не может снять собственную роль.
     if (
         user.id == current_user.id
         and effective_role != UserRole.SUPER_ADMIN
@@ -340,6 +395,12 @@ def update_user_by_super_admin(
                 "собственную роль."
             ),
         )
+
+    if "username" in update_data:
+        user.username = update_data["username"]
+
+    if "email" in update_data:
+        user.email = update_data["email"]
 
     if "full_name" in update_data:
         user.full_name = update_data["full_name"]
@@ -372,11 +433,11 @@ def login(
     db: Session = Depends(get_db),
 ):
     """
-    Авторизация всех ролей по email и паролю.
+    Авторизация по логину и паролю.
     """
     user = (
         db.query(User)
-        .filter(User.email == payload.email)
+        .filter(User.username == payload.username)
         .first()
     )
 
@@ -389,7 +450,7 @@ def login(
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Неверный email или пароль.",
+            detail="Неверный логин или пароль.",
         )
 
     if not user.is_active:

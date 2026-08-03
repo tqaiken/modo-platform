@@ -1,101 +1,208 @@
-import React, {
+import {
   createContext,
-  useContext,
-  useState,
-  useEffect,
   useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
 } from "react";
+
 import { api } from "../services/api";
 
-interface User {
+
+export type UserRole =
+  | "SUPER_ADMIN"
+  | "CURATOR"
+  | "VERIFIER"
+  | "DEVELOPER";
+
+
+export interface User {
   id: number;
-  email: string;
+  username: string;
+  email: string | null;
   full_name: string;
-  role: "DEVELOPER" | "VERIFIER" | "CURATOR";
+  role: UserRole;
   is_active: boolean;
+  subject_id: number | null;
 }
+
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+
+  login: (
+    username: string,
+    password: string
+  ) => Promise<void>;
+
+  logout: () => void;
+
+  refreshUser: () => Promise<void>;
+
   register: (
     email: string,
     fullName: string,
     password: string,
     role: string
   ) => Promise<void>;
-  logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+const AuthContext = createContext<AuthContextType | null>(
+  null
+);
+
+
+function setAuthorizationToken(
+  token: string | null
+): void {
+  if (token) {
+    api.defaults.headers.common.Authorization =
+      `Bearer ${token}`;
+
+    return;
+  }
+
+  delete api.defaults.headers.common.Authorization;
+}
+
+
+export function AuthProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const [user, setUser] = useState<User | null>(null);
+
   const [loading, setLoading] = useState(true);
 
-  // Restore session from token
-  useEffect(() => {
+
+  const refreshUser = useCallback(async (): Promise<void> => {
     const token = localStorage.getItem("token");
-    if (token) {
-      api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
-      api
-        .get("/api/v1/auth/me")
-        .then((res) => setUser(res.data))
-        .catch(() => {
-          localStorage.removeItem("token");
-          delete api.defaults.headers.common["Authorization"];
-        })
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
+
+    if (!token) {
+      setAuthorizationToken(null);
+      setUser(null);
+      return;
+    }
+
+    setAuthorizationToken(token);
+
+    try {
+      const response = await api.get<User>(
+        "/api/v1/auth/me"
+      );
+
+      setUser(response.data);
+    } catch {
+      localStorage.removeItem("token");
+      setAuthorizationToken(null);
+      setUser(null);
     }
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const res = await api.post("/api/v1/auth/login", { email, password });
-    const { access_token, user: userData } = res.data;
-    localStorage.setItem("token", access_token);
-    api.defaults.headers.common["Authorization"] = `Bearer ${access_token}`;
-    setUser(userData);
-  }, []);
 
-  const register = useCallback(
+  useEffect(() => {
+    const restoreSession = async (): Promise<void> => {
+      try {
+        await refreshUser();
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void restoreSession();
+  }, [refreshUser]);
+
+
+  const login = useCallback(
     async (
-      email: string,
-      fullName: string,
-      password: string,
-      role: string
-    ) => {
-      const res = await api.post("/api/v1/auth/register", {
-        email,
-        full_name: fullName,
-        password,
-        role,
-      });
-      const { access_token, user: userData } = res.data;
-      localStorage.setItem("token", access_token);
-      api.defaults.headers.common["Authorization"] = `Bearer ${access_token}`;
+      username: string,
+      password: string
+    ): Promise<void> => {
+      const normalizedUsername = username
+        .trim()
+        .toLowerCase();
+
+      const response = await api.post(
+        "/api/v1/auth/login",
+        {
+          username: normalizedUsername,
+          password,
+        }
+      );
+
+      const {
+        access_token: accessToken,
+        user: userData,
+      } = response.data as {
+        access_token: string;
+        token_type: string;
+        user: User;
+      };
+
+      localStorage.setItem(
+        "token",
+        accessToken
+      );
+
+      setAuthorizationToken(accessToken);
       setUser(userData);
     },
     []
   );
 
-  const logout = useCallback(() => {
+
+  const register = useCallback(
+    async (
+      _email: string,
+      _fullName: string,
+      _password: string,
+      _role: string
+    ): Promise<void> => {
+      throw new Error(
+        "Публичная регистрация отключена. " +
+          "Пользователей создаёт супер-администратор."
+      );
+    },
+    []
+  );
+
+
+  const logout = useCallback((): void => {
     localStorage.removeItem("token");
-    delete api.defaults.headers.common["Authorization"];
+    setAuthorizationToken(null);
     setUser(null);
   }, []);
 
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        logout,
+        refreshUser,
+        register,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 }
 
-export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
-  return ctx;
+
+export function useAuth(): AuthContextType {
+  const context = useContext(AuthContext);
+
+  if (!context) {
+    throw new Error(
+      "useAuth должен использоваться внутри AuthProvider"
+    );
+  }
+
+  return context;
 }

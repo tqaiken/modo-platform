@@ -31,10 +31,17 @@ class User(Base):
         index=True,
     )
 
+    username = Column(
+        String(100),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+
     email = Column(
         String(255),
         unique=True,
-        nullable=False,
+        nullable=True,
         index=True,
     )
 
@@ -60,7 +67,8 @@ class User(Base):
         nullable=False,
     )
 
-    # SUPER_ADMIN назначает предмет разработчику и верификатору.
+    # SUPER_ADMIN назначает предмет разработчику
+    # и верификатору.
     # Для CURATOR и SUPER_ADMIN поле может быть пустым.
     subject_id = Column(
         Integer,
@@ -89,7 +97,7 @@ class User(Base):
 
     def __repr__(self):
         return (
-            f"<User {self.email} "
-            f"({self.role.value}) "
+            f"<User username={self.username} "
+            f"role={self.role.value} "
             f"subject_id={self.subject_id}>"
         )

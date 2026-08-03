@@ -2,6 +2,7 @@ from pydantic import (
     BaseModel,
     EmailStr,
     Field,
+    field_validator,
     model_validator,
 )
 
@@ -14,12 +15,27 @@ SUBJECT_REQUIRED_ROLES = {
 }
 
 
+def normalize_username(value: str) -> str:
+    """
+    Нормализует логин:
+    - удаляет пробелы по краям;
+    - переводит в нижний регистр.
+    """
+    return value.strip().lower()
+
+
 class UserCreate(BaseModel):
     """
-    Используется только для создания первого SUPER_ADMIN.
+    Создание первого SUPER_ADMIN.
     """
 
-    email: EmailStr
+    username: str = Field(
+        min_length=3,
+        max_length=100,
+        pattern=r"^[a-zA-Z0-9._-]+$",
+    )
+
+    email: EmailStr | None = None
 
     full_name: str = Field(
         min_length=2,
@@ -31,7 +47,25 @@ class UserCreate(BaseModel):
         max_length=128,
     )
 
-    role: UserRole = UserRole.DEVELOPER
+    role: UserRole = UserRole.SUPER_ADMIN
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        return normalize_username(value)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_optional_email(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        if value is None:
+            return None
+
+        normalized = value.strip().lower()
+
+        return normalized or None
 
 
 class UserCreateByAdmin(BaseModel):
@@ -39,7 +73,13 @@ class UserCreateByAdmin(BaseModel):
     Создание пользователя супер-администратором.
     """
 
-    email: EmailStr
+    username: str = Field(
+        min_length=3,
+        max_length=100,
+        pattern=r"^[a-zA-Z0-9._-]+$",
+    )
+
+    email: EmailStr | None = None
 
     full_name: str = Field(
         min_length=2,
@@ -57,6 +97,24 @@ class UserCreateByAdmin(BaseModel):
         default=None,
         ge=1,
     )
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        return normalize_username(value)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_optional_email(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        if value is None:
+            return None
+
+        normalized = value.strip().lower()
+
+        return normalized or None
 
     @model_validator(mode="after")
     def validate_subject_assignment(self):
@@ -85,9 +143,18 @@ class UserUpdateByAdmin(BaseModel):
     """
     Изменение существующего пользователя SUPER_ADMIN.
 
-    Можно изменить имя, роль, предмет, пароль
-    и состояние учётной записи.
+    Все поля необязательные, поскольку используется PATCH.
+    Чтобы удалить email, нужно передать email: null.
     """
+
+    username: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=100,
+        pattern=r"^[a-zA-Z0-9._-]+$",
+    )
+
+    email: EmailStr | None = None
 
     full_name: str | None = Field(
         default=None,
@@ -110,15 +177,56 @@ class UserUpdateByAdmin(BaseModel):
 
     is_active: bool | None = None
 
+    @field_validator("username")
+    @classmethod
+    def validate_username(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        if value is None:
+            return None
+
+        return normalize_username(value)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_optional_email(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        if value is None:
+            return None
+
+        normalized = value.strip().lower()
+
+        return normalized or None
+
 
 class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
+    """
+    Авторизация по логину и паролю.
+    """
+
+    username: str = Field(
+        min_length=3,
+        max_length=100,
+    )
+
+    password: str = Field(
+        min_length=8,
+        max_length=128,
+    )
+
+    @field_validator("username")
+    @classmethod
+    def validate_username(cls, value: str) -> str:
+        return normalize_username(value)
 
 
 class UserRead(BaseModel):
     id: int
-    email: str
+    username: str
+    email: str | None
     full_name: str
     role: UserRole
     is_active: bool
