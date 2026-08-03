@@ -11,6 +11,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Send,
   Trash2,
 } from "lucide-react";
 import {
@@ -119,7 +120,10 @@ interface ApiError {
 }
 
 
-const STATUS_LABELS: Record<VariantStatus, string> = {
+const STATUS_LABELS: Record<
+  VariantStatus,
+  string
+> = {
   DRAFT: "Черновик",
   VERIFICATION: "На верификации",
   REVISION: "На доработке",
@@ -128,12 +132,19 @@ const STATUS_LABELS: Record<VariantStatus, string> = {
 };
 
 
-const STATUS_CLASSES: Record<VariantStatus, string> = {
+const STATUS_CLASSES: Record<
+  VariantStatus,
+  string
+> = {
   DRAFT: "badge bg-gray-100 text-gray-700",
-  VERIFICATION: "badge bg-blue-100 text-blue-800",
-  REVISION: "badge bg-amber-100 text-amber-800",
-  APPROVED: "badge bg-green-100 text-green-800",
-  IN_BANK: "badge bg-purple-100 text-purple-800",
+  VERIFICATION:
+    "badge bg-blue-100 text-blue-800",
+  REVISION:
+    "badge bg-amber-100 text-amber-800",
+  APPROVED:
+    "badge bg-green-100 text-green-800",
+  IN_BANK:
+    "badge bg-purple-100 text-purple-800",
 };
 
 
@@ -152,10 +163,31 @@ function getErrorMessage(
   fallback: string
 ): string {
   const apiError = error as ApiError;
-  const detail = apiError.response?.data?.detail;
+  const detail =
+    apiError.response?.data?.detail;
 
   if (typeof detail === "string") {
     return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (
+          typeof item === "object" &&
+          item !== null &&
+          "msg" in item
+        ) {
+          return String(item.msg);
+        }
+
+        return String(item);
+      })
+      .join("; ");
+  }
+
+  if (error instanceof Error) {
+    return error.message;
   }
 
   return fallback;
@@ -166,6 +198,9 @@ export default function VariantDetailPage() {
   const { variantId } = useParams<{
     variantId: string;
   }>();
+
+  const numericVariantId =
+    Number(variantId);
 
   const [variant, setVariant] =
     useState<Variant | null>(null);
@@ -179,9 +214,14 @@ export default function VariantDetailPage() {
   const [objectives, setObjectives] =
     useState<LearningObjective[]>([]);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] =
+    useState(true);
 
-  const numericVariantId = Number(variantId);
+  const [submitting, setSubmitting] =
+    useState(false);
+
+  const [deletingQuestionId, setDeletingQuestionId] =
+    useState<number | null>(null);
 
 
   const loadData = useCallback(
@@ -190,6 +230,8 @@ export default function VariantDetailPage() {
         !Number.isInteger(numericVariantId) ||
         numericVariantId < 1
       ) {
+        setVariant(null);
+        setQuestions([]);
         setLoading(false);
         return;
       }
@@ -220,15 +262,25 @@ export default function VariantDetailPage() {
           ),
         ]);
 
-        setVariant(variantResponse.data);
+        setVariant(
+          variantResponse.data
+        );
+
         setQuestions(
           questionsResponse.data.items
         );
-        setSubjects(subjectsResponse.data);
+
+        setSubjects(
+          subjectsResponse.data
+        );
+
         setObjectives(
           objectivesResponse.data.items
         );
       } catch (error: unknown) {
+        setVariant(null);
+        setQuestions([]);
+
         toast.error(
           getErrorMessage(
             error,
@@ -256,11 +308,14 @@ export default function VariantDetailPage() {
     }
 
     const subject = subjects.find(
-      (item) => item.id === subjectId
+      (item) =>
+        item.id === subjectId
     );
 
-    return subject?.title ??
-      `Предмет #${subjectId}`;
+    return (
+      subject?.title ??
+      `Предмет #${subjectId}`
+    );
   };
 
 
@@ -272,21 +327,25 @@ export default function VariantDetailPage() {
     }
 
     const objective = objectives.find(
-      (item) => item.id === objectiveId
+      (item) =>
+        item.id === objectiveId
     );
 
     if (!objective) {
       return `ОРО #${objectiveId}`;
     }
 
-    return `${objective.code}: ${objective.title_ru}`;
+    return (
+      `${objective.code}: ` +
+      objective.title_ru
+    );
   };
 
 
   const handleDeleteQuestion = async (
     question: VariantQuestion
   ): Promise<void> => {
-    if (!variant) {
+    if (variant === null) {
       return;
     }
 
@@ -298,12 +357,18 @@ export default function VariantDetailPage() {
       return;
     }
 
+    setDeletingQuestionId(
+      question.id
+    );
+
     try {
       await api.delete(
         `/api/v1/variants/${variant.id}/questions/${question.id}`
       );
 
-      toast.success("Вопрос удалён.");
+      toast.success(
+        "Вопрос удалён."
+      );
 
       await loadData();
     } catch (error: unknown) {
@@ -313,8 +378,74 @@ export default function VariantDetailPage() {
           "Не удалось удалить вопрос."
         )
       );
+    } finally {
+      setDeletingQuestionId(null);
     }
   };
+
+
+  const handleSubmitVariant =
+    async (): Promise<void> => {
+      if (variant === null) {
+        return;
+      }
+
+      if (
+        variant.status !== "DRAFT" &&
+        variant.status !== "REVISION"
+      ) {
+        toast.error(
+          "Вариант уже отправлен или утверждён."
+        );
+        return;
+      }
+
+      if (questions.length === 0) {
+        toast.error(
+          "Добавьте хотя бы один вопрос."
+        );
+        return;
+      }
+
+      const confirmed = window.confirm(
+        "Отправить весь вариант на верификацию?\n\n" +
+          "После отправки редактирование вопросов " +
+          "и изображений будет недоступно до возврата " +
+          "варианта на доработку."
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      setSubmitting(true);
+
+      try {
+        const response =
+          await api.post<Variant>(
+            `/api/v1/variants/${variant.id}/submit`
+          );
+
+        setVariant(
+          response.data
+        );
+
+        toast.success(
+          "Вариант отправлен на верификацию."
+        );
+
+        await loadData();
+      } catch (error: unknown) {
+        toast.error(
+          getErrorMessage(
+            error,
+            "Не удалось отправить вариант на верификацию."
+          )
+        );
+      } finally {
+        setSubmitting(false);
+      }
+    };
 
 
   if (loading) {
@@ -339,7 +470,7 @@ export default function VariantDetailPage() {
   }
 
 
-  if (!variant) {
+  if (variant === null) {
     return (
       <MessageCard
         title="Вариант не найден"
@@ -377,15 +508,21 @@ export default function VariantDetailPage() {
 
               <span
                 className={
-                  STATUS_CLASSES[variant.status]
+                  STATUS_CLASSES[
+                    variant.status
+                  ]
                 }
               >
-                {STATUS_LABELS[variant.status]}
+                {
+                  STATUS_LABELS[
+                    variant.status
+                  ]
+                }
               </span>
             </div>
 
             {variant.description && (
-              <p className="mt-2 max-w-3xl text-sm text-gray-600">
+              <p className="mt-2 max-w-3xl whitespace-pre-wrap text-sm text-gray-600">
                 {variant.description}
               </p>
             )}
@@ -396,9 +533,20 @@ export default function VariantDetailPage() {
             onClick={() => {
               void loadData();
             }}
+            disabled={
+              loading ||
+              submitting
+            }
             className="btn-secondary"
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw
+              className={`h-4 w-4 ${
+                loading
+                  ? "animate-spin"
+                  : ""
+              }`}
+            />
+
             Обновить
           </button>
         </div>
@@ -422,7 +570,9 @@ export default function VariantDetailPage() {
 
           <InfoCard
             label="Количество вопросов"
-            value={String(questions.length)}
+            value={String(
+              questions.length
+            )}
             icon={
               <FileQuestion className="h-4 w-4" />
             }
@@ -452,21 +602,88 @@ export default function VariantDetailPage() {
         </div>
 
         {editable && (
-          <Link
-            to={`/variants/${variant.id}/questions/new`}
-            className="btn-primary"
-          >
-            <Plus className="h-4 w-4" />
-            Добавить вопрос
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              to={`/variants/${variant.id}/questions/new`}
+              className="btn-secondary"
+            >
+              <Plus className="h-4 w-4" />
+              Добавить вопрос
+            </Link>
+
+            <button
+              type="button"
+              onClick={() => {
+                void handleSubmitVariant();
+              }}
+              disabled={
+                submitting ||
+                questions.length === 0
+              }
+              className="btn-primary"
+              title={
+                questions.length === 0
+                  ? "Добавьте хотя бы один вопрос"
+                  : "Отправить весь вариант на проверку"
+              }
+            >
+              <Send
+                className={`h-4 w-4 ${
+                  submitting
+                    ? "animate-pulse"
+                    : ""
+                }`}
+              />
+
+              {submitting
+                ? "Отправка..."
+                : "Отправить на верификацию"}
+            </button>
+          </div>
         )}
       </section>
 
 
-      {!editable && (
+      {editable &&
+        questions.length === 0 && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+            Для отправки на верификацию
+            добавьте хотя бы один полностью
+            заполненный вопрос.
+          </div>
+        )}
+
+
+      {variant.status === "VERIFICATION" && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
-          Вариант уже отправлен на проверку или утверждён.
-          Редактирование вопросов недоступно.
+          Вариант отправлен на верификацию.
+          Редактирование вопросов и изображений
+          временно недоступно.
+        </div>
+      )}
+
+
+      {variant.status === "REVISION" && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          Вариант возвращён на доработку.
+          Исправьте вопросы и повторно отправьте
+          весь вариант на верификацию.
+        </div>
+      )}
+
+
+      {variant.status === "APPROVED" && (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          Вариант утверждён.
+          Редактирование недоступно.
+        </div>
+      )}
+
+
+      {variant.status === "IN_BANK" && (
+        <div className="rounded-lg border border-purple-200 bg-purple-50 p-4 text-sm text-purple-800">
+          Вариант размещён в банке заданий.
+          Доступен только просмотр.
         </div>
       )}
 
@@ -496,105 +713,164 @@ export default function VariantDetailPage() {
         </section>
       ) : (
         <div className="space-y-4">
-          {questions.map((question) => (
-            <article
-              key={question.id}
-              className="card"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-700">
-                      {question.order_number}
-                    </span>
+          {questions.map(
+            (question) => (
+              <article
+                key={question.id}
+                className="card"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-100 text-sm font-bold text-primary-700">
+                        {
+                          question.order_number
+                        }
+                      </span>
 
-                    <div>
-                      <h3 className="font-semibold text-gray-900">
-                        Вопрос №{question.order_number}
-                      </h3>
+                      <div>
+                        <h3 className="font-semibold text-gray-900">
+                          Вопрос №
+                          {
+                            question.order_number
+                          }
+                        </h3>
 
-                      <p className="text-xs text-gray-500">
-                        ID: {question.id}
-                      </p>
+                        <p className="text-xs text-gray-500">
+                          ID: {question.id}
+                        </p>
+                      </div>
+                    </div>
+
+
+                    <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                      <QuestionTextBlock
+                        label="Қазақша"
+                        value={
+                          question.question_text_kz
+                        }
+                      />
+
+                      <QuestionTextBlock
+                        label="Русский"
+                        value={
+                          question.question_text_ru
+                        }
+                      />
+                    </div>
+
+
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <span className="badge bg-indigo-100 text-indigo-800">
+                        {question.cognitive_level
+                          ? COGNITIVE_LEVEL_LABELS[
+                              question
+                                .cognitive_level
+                            ]
+                          : "Уровень не указан"}
+                      </span>
+
+                      <span className="badge bg-gray-100 text-gray-700">
+                        {getObjectiveLabel(
+                          question
+                            .learning_objective_id
+                        )}
+                      </span>
+
+                      <span className="badge bg-gray-100 text-gray-700">
+                        Ответов:{" "}
+                        {
+                          question
+                            .options
+                            .length
+                        }
+                      </span>
+
+                      {question.media_files.length >
+                        0 && (
+                        <span className="badge bg-blue-100 text-blue-800">
+                          Файлов:{" "}
+                          {
+                            question
+                              .media_files
+                              .length
+                          }
+                        </span>
+                      )}
                     </div>
                   </div>
 
 
-                  <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                    <QuestionTextBlock
-                      label="Қазақша"
-                      value={
-                        question.question_text_kz
-                      }
-                    />
+                  {editable && (
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <Link
+                        to={`/variants/${variant.id}/questions/${question.id}/edit`}
+                        className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Изменить
+                      </Link>
 
-                    <QuestionTextBlock
-                      label="Русский"
-                      value={
-                        question.question_text_ru
-                      }
-                    />
-                  </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleDeleteQuestion(
+                            question
+                          );
+                        }}
+                        disabled={
+                          deletingQuestionId ===
+                          question.id
+                        }
+                        className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
 
-
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <span className="badge bg-indigo-100 text-indigo-800">
-                      {question.cognitive_level
-                        ? COGNITIVE_LEVEL_LABELS[
-                            question.cognitive_level
-                          ]
-                        : "Уровень не указан"}
-                    </span>
-
-                    <span className="badge bg-gray-100 text-gray-700">
-                      {getObjectiveLabel(
-                        question.learning_objective_id
-                      )}
-                    </span>
-
-                    <span className="badge bg-gray-100 text-gray-700">
-                      Ответов: {question.options.length}
-                    </span>
-
-                    {question.media_files.length > 0 && (
-                      <span className="badge bg-blue-100 text-blue-800">
-                        Файлов:{" "}
-                        {question.media_files.length}
-                      </span>
-                    )}
-                  </div>
+                        {deletingQuestionId ===
+                        question.id
+                          ? "Удаление..."
+                          : "Удалить"}
+                      </button>
+                    </div>
+                  )}
                 </div>
-
-
-                {editable && (
-                  <div className="flex shrink-0 gap-2">
-                    <Link
-                      to={`/variants/${variant.id}/questions/${question.id}/edit`}
-                      className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-primary-700 hover:bg-primary-50"
-                    >
-                      <Pencil className="h-4 w-4" />
-                      Изменить
-                    </Link>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void handleDeleteQuestion(
-                          question
-                        );
-                      }}
-                      className="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                      Удалить
-                    </button>
-                  </div>
-                )}
-              </div>
-            </article>
-          ))}
+              </article>
+            )
+          )}
         </div>
       )}
+
+
+      {editable &&
+        questions.length > 0 && (
+          <section className="sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-gray-200 bg-white/95 p-4 shadow-lg backdrop-blur">
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                Вариант готов?
+              </p>
+
+              <p className="mt-1 text-xs text-gray-500">
+                Backend проверит все вопросы
+                перед отправкой.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                void handleSubmitVariant();
+              }}
+              disabled={submitting}
+              className="btn-primary"
+            >
+              <Send className="h-4 w-4" />
+
+              {submitting
+                ? "Отправка..."
+                : "Отправить на верификацию"}
+            </button>
+          </section>
+        )}
     </div>
   );
 }

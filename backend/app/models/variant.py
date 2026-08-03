@@ -3,12 +3,12 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Column,
+    DateTime,
+    Enum,
+    ForeignKey,
     Integer,
     String,
     Text,
-    Enum,
-    DateTime,
-    ForeignKey,
 )
 from sqlalchemy.orm import relationship
 
@@ -44,8 +44,12 @@ class Variant(Base):
 
     subject_id = Column(
         Integer,
-        ForeignKey("subjects.id"),
+        ForeignKey(
+            "subjects.id",
+            ondelete="RESTRICT",
+        ),
         nullable=True,
+        index=True,
     )
 
     subject = relationship(
@@ -55,14 +59,39 @@ class Variant(Base):
 
     developer_id = Column(
         Integer,
-        ForeignKey("users.id"),
+        ForeignKey(
+            "users.id",
+            ondelete="RESTRICT",
+        ),
         nullable=False,
+        index=True,
     )
 
     developer = relationship(
         "User",
         foreign_keys=[developer_id],
         lazy="joined",
+    )
+
+    reviewer_id = Column(
+        Integer,
+        ForeignKey(
+            "users.id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+        index=True,
+    )
+
+    reviewer = relationship(
+        "User",
+        foreign_keys=[reviewer_id],
+        lazy="joined",
+    )
+
+    review_comment = Column(
+        Text,
+        nullable=True,
     )
 
     questions = relationship(
@@ -74,7 +103,10 @@ class Variant(Base):
     )
 
     status = Column(
-        Enum(VariantStatus),
+        Enum(
+            VariantStatus,
+            name="variantstatus",
+        ),
         default=VariantStatus.DRAFT,
         nullable=False,
         index=True,
@@ -108,9 +140,21 @@ class Variant(Base):
         nullable=True,
     )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        status_value = (
+            self.status.value
+            if self.status is not None
+            else "UNKNOWN"
+        )
+
+        title_preview = (
+            self.title[:40]
+            if self.title
+            else ""
+        )
+
         return (
-            f"<Variant #{self.id} "
-            f"[{self.status.value}] "
-            f"'{self.title[:40]}'>"
+            f"<Variant id={self.id} "
+            f"status={status_value} "
+            f"title='{title_preview}'>"
         )
