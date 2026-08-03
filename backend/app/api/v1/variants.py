@@ -53,16 +53,25 @@ def create_variant(
     user: User = Depends(require_developer),
 ):
     """
-    Create a new draft variant for the current developer.
+    Создание нового варианта разработчиком.
 
-    Subject assignment will be taken from the developer account
-    after subject_id is added to the User model.
+    Предмет автоматически берётся из аккаунта разработчика.
+    Разработчик не может выбрать или изменить предмет вручную.
     """
+    if user.subject_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Для разработчика не назначен предмет. "
+                "Обратитесь к SUPER_ADMIN."
+            ),
+        )
+
     variant = Variant(
         title=payload.title,
         description=payload.description,
         developer_id=user.id,
-        subject_id=None,
+        subject_id=user.subject_id,
         status=VariantStatus.DRAFT,
     )
 

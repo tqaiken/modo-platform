@@ -135,84 +135,223 @@ def delete_question(
 # ──────────────────── VERIFIER ────────────────────
 
 
-@router.get("/verification-queue", response_model=QuestionList)
+@router.get(
+    "/verification-queue",
+    response_model=QuestionList,
+)
 def get_verification_queue(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
     user: User = Depends(require_verifier),
 ):
-    """List questions pending verification."""
-    query = db.query(Question).filter(Question.status == QuestionStatus.VERIFICATION)
+    """
+    Возвращает очередь вопросов на верификацию.
+
+    Верификатор видит только вопросы по предмету,
+    назначенному SUPER_ADMIN в его учётной записи.
+    """
+    if user.subject_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Для верификатора не назначен предмет. "
+                "Обратитесь к SUPER_ADMIN."
+            ),
+        )
+
+    query = db.query(Question).filter(
+        Question.status == QuestionStatus.VERIFICATION,
+        Question.subject_id == user.subject_id,
+    )
+
     total = query.count()
+
     items = (
-        query.order_by(Question.submitted_at.asc())
+        query
+        .order_by(
+            Question.submitted_at.asc(),
+            Question.id.asc(),
+        )
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
     )
-    return QuestionList(items=items, total=total, page=page, page_size=page_size)
+
+    return QuestionList(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
-@router.post("/{question_id}/review", response_model=QuestionRead)
+@router.post(
+    "/{question_id}/review",
+    response_model=QuestionRead,
+)
 def review_question(
     question_id: int,
     payload: QuestionReview,
     db: Session = Depends(get_db),
     user: User = Depends(require_verifier),
 ):
-    """Approve (→ IN_BANK) or reject (→ REVISION). Verifier can also edit the question inline."""
-    q = db.query(Question).filter(Question.id == question_id).first()
-    if not q:
-        raise HTTPException(404, "Question not found")
-    if q.status != QuestionStatus.VERIFICATION:
-        raise HTTPException(400, "Question is not in VERIFICATION status")
+    """
+    Проверяет вопрос по предмету текущего верификатора.
 
-    # ── Apply verifier edits if provided ──
-    edits_applied = []
-    if payload.edited_title is not None and payload.edited_title != q.title:
+    approved=True:
+        VERIFICATION → IN_BANK
+
+    approved=False:
+        VERIFICATION → REVISION
+
+    Верификатор может внести разрешённые правки
+    и обязательно сохранить комментарий проверки.
+    """
+    if user.subject_id is None:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Для верификатора не назначен предмет. "
+                "Обратитесь к SUPER_ADMIN."
+            ),
+        )
+
+    q = (
+        db.query(Question)
+        .filter(Question.id == question_id)
+        .first()
+    )
+
+    if q is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Вопрос не найден.",
+        )
+
+    if q.subject_id != user.subject_id:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Вы не можете проверять вопросы "
+                "по другому предмету."
+            ),
+        )
+
+    if q.status != QuestionStatus.VERIFICATION:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Вопрос не находится на верификации. "
+                f"Текущий статус: {q.status.value}."
+            ),
+        )
+
+    # Сохраняем предыдущий статус для полной хронологии.
+    previous_status = q.status
+
+    # Разрешённые правки верификатора.
+    edits_applied: list[str] = []
+
+    if (
+        payload.edited_title is not None
+        and payload.edited_title != q.title
+    ):
         q.title = payload.edited_title
         edits_applied.append("title")
-    if payload.edited_body is not None and payload.edited_body != q.body:
+
+    if (
+        payload.edited_body is not None
+        and payload.edited_body != q.body
+    ):
         q.body = payload.edited_body
         edits_applied.append("body")
+
     if payload.edited_options is not None:
-        new_opts = [opt.model_dump() for opt in payload.edited_options]
-        if new_opts != q.options:
-            q.options = new_opts
+        new_options = [
+            option.model_dump()
+            for option in payload.edited_options
+        ]
+
+        if new_options != q.options:
+            q.options = new_options
             edits_applied.append("options")
-    if payload.edited_explanation is not None and payload.edited_explanation != q.explanation:
+
+    if (
+        payload.edited_explanation is not None
+        and payload.edited_explanation != q.explanation
+    ):
         q.explanation = payload.edited_explanation
         edits_applied.append("explanation")
 
     if edits_applied:
         log_action(
-            db, q.id, user.id, LogAction.EDITED_BY_VERIFIER,
-            f"Verifier edited fields: {edits_applied}",
+            db,
+            q.id,
+            user.id,
+            LogAction.EDITED_BY_VERIFIER,
+            (
+                "Верификатор изменил поля: "
+                f"{', '.join(edits_applied)}"
+            ),
         )
 
-    # ── Save review comment ──
+    # Комментарий проверки.
+    comment_text = payload.comment.strip()
+
+    if not comment_text:
+        raise HTTPException(
+            status_code=422,
+            detail="Комментарий верификатора обязателен.",
+        )
+
     comment = ReviewComment(
         question_id=q.id,
         author_id=user.id,
-        content=payload.comment,
+        content=comment_text,
     )
+
     db.add(comment)
 
     now = datetime.now(timezone.utc)
+
     q.reviewer_id = user.id
     q.reviewed_at = now
 
     if payload.approved:
         q.status = QuestionStatus.IN_BANK
         q.approved_at = now
-        log_action(db, q.id, user.id, LogAction.APPROVED, payload.comment)
+
+        log_action(
+            db,
+            q.id,
+            user.id,
+            LogAction.APPROVED,
+            (
+                f"Статус изменён: "
+                f"{previous_status.value} → {q.status.value}. "
+                f"Комментарий: {comment_text}"
+            ),
+        )
     else:
         q.status = QuestionStatus.REVISION
-        log_action(db, q.id, user.id, LogAction.REJECTED, payload.comment)
+        q.approved_at = None
+
+        log_action(
+            db,
+            q.id,
+            user.id,
+            LogAction.REJECTED,
+            (
+                f"Статус изменён: "
+                f"{previous_status.value} → {q.status.value}. "
+                f"Комментарий: {comment_text}"
+            ),
+        )
 
     db.commit()
     db.refresh(q)
+
     return q
 
 
