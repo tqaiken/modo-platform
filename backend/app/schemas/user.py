@@ -1,4 +1,9 @@
-from pydantic import BaseModel, EmailStr, Field, model_validator
+from pydantic import (
+    BaseModel,
+    EmailStr,
+    Field,
+    model_validator,
+)
 
 from app.models.user import UserRole
 
@@ -15,14 +20,17 @@ class UserCreate(BaseModel):
     """
 
     email: EmailStr
+
     full_name: str = Field(
         min_length=2,
         max_length=255,
     )
+
     password: str = Field(
         min_length=8,
         max_length=128,
     )
+
     role: UserRole = UserRole.DEVELOPER
 
 
@@ -32,15 +40,19 @@ class UserCreateByAdmin(BaseModel):
     """
 
     email: EmailStr
+
     full_name: str = Field(
         min_length=2,
         max_length=255,
     )
+
     password: str = Field(
         min_length=8,
         max_length=128,
     )
+
     role: UserRole
+
     subject_id: int | None = Field(
         default=None,
         ge=1,
@@ -67,6 +79,36 @@ class UserCreateByAdmin(BaseModel):
             )
 
         return self
+
+
+class UserUpdateByAdmin(BaseModel):
+    """
+    Изменение существующего пользователя SUPER_ADMIN.
+
+    Можно изменить имя, роль, предмет, пароль
+    и состояние учётной записи.
+    """
+
+    full_name: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=255,
+    )
+
+    password: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=128,
+    )
+
+    role: UserRole | None = None
+
+    subject_id: int | None = Field(
+        default=None,
+        ge=1,
+    )
+
+    is_active: bool | None = None
 
 
 class UserLogin(BaseModel):

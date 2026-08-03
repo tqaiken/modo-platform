@@ -1,6 +1,7 @@
 from app.schemas.user import (
     UserCreate,
     UserCreateByAdmin,
+    UserUpdateByAdmin,
     UserLogin,
     UserRead,
     TokenResponse,
@@ -34,6 +35,7 @@ from app.schemas.comment import (
 __all__ = [
     "UserCreate",
     "UserCreateByAdmin",
+    "UserUpdateByAdmin",
     "UserLogin",
     "UserRead",
     "TokenResponse",
