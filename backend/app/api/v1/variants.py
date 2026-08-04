@@ -7,7 +7,7 @@ from fastapi import (
     Query,
     status,
 )
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -30,9 +30,13 @@ from app.schemas.question import (
     VariantQuestionUpdate,
 )
 from app.schemas.variant import (
+    CuratorVariantItem,
+    CuratorVariantList,
     VariantCreate,
     VariantDashboard,
     VariantList,
+    VariantPublish,
+    VariantPublishResult,
     VariantQueueItem,
     VariantQueueList,
     VariantRead,
@@ -51,9 +55,12 @@ require_developer = RoleGuard(
     UserRole.DEVELOPER,
 )
 
-
 require_verifier = RoleGuard(
     UserRole.VERIFIER,
+)
+
+require_curator = RoleGuard(
+    UserRole.CURATOR,
 )
 
 
@@ -63,13 +70,20 @@ EDITABLE_VARIANT_STATUSES = {
 }
 
 
-def get_reviewer_name(
-    variant: Variant,
-) -> str | None:
-    if variant.reviewer is None:
-        return None
+CURATOR_VISIBLE_STATUSES = {
+    VariantStatus.APPROVED,
+    VariantStatus.IN_BANK,
+}
 
-    return variant.reviewer.full_name
+
+def get_user_name(
+    user: User | None,
+    fallback: str | None = None,
+) -> str | None:
+    if user is None:
+        return fallback
+
+    return user.full_name
 
 
 def serialize_variant(
@@ -82,10 +96,15 @@ def serialize_variant(
         subject_id=variant.subject_id,
         developer_id=variant.developer_id,
         reviewer_id=variant.reviewer_id,
-        reviewer_name=get_reviewer_name(
-            variant
+        reviewer_name=get_user_name(
+            variant.reviewer
         ),
         review_comment=variant.review_comment,
+        curator_id=variant.curator_id,
+        curator_name=get_user_name(
+            variant.curator
+        ),
+        curator_comment=variant.curator_comment,
         status=variant.status,
         question_count=len(
             variant.questions
@@ -95,16 +114,16 @@ def serialize_variant(
         submitted_at=variant.submitted_at,
         reviewed_at=variant.reviewed_at,
         approved_at=variant.approved_at,
+        published_at=variant.published_at,
     )
 
 
 def serialize_queue_item(
     variant: Variant,
 ) -> VariantQueueItem:
-    developer_name = (
-        variant.developer.full_name
-        if variant.developer is not None
-        else f"Разработчик #{variant.developer_id}"
+    developer_name = get_user_name(
+        variant.developer,
+        f"Разработчик #{variant.developer_id}",
     )
 
     return VariantQueueItem(
@@ -113,7 +132,7 @@ def serialize_queue_item(
         description=variant.description,
         subject_id=variant.subject_id,
         developer_id=variant.developer_id,
-        developer_name=developer_name,
+        developer_name=developer_name or "",
         status=variant.status,
         question_count=len(
             variant.questions
@@ -123,6 +142,44 @@ def serialize_queue_item(
         submitted_at=variant.submitted_at,
         reviewed_at=variant.reviewed_at,
         approved_at=variant.approved_at,
+    )
+
+
+def serialize_curator_item(
+    variant: Variant,
+) -> CuratorVariantItem:
+    developer_name = get_user_name(
+        variant.developer,
+        f"Разработчик #{variant.developer_id}",
+    )
+
+    return CuratorVariantItem(
+        id=variant.id,
+        title=variant.title,
+        description=variant.description,
+        subject_id=variant.subject_id,
+        developer_id=variant.developer_id,
+        developer_name=developer_name or "",
+        reviewer_id=variant.reviewer_id,
+        reviewer_name=get_user_name(
+            variant.reviewer
+        ),
+        review_comment=variant.review_comment,
+        curator_id=variant.curator_id,
+        curator_name=get_user_name(
+            variant.curator
+        ),
+        curator_comment=variant.curator_comment,
+        status=variant.status,
+        question_count=len(
+            variant.questions
+        ),
+        created_at=variant.created_at,
+        updated_at=variant.updated_at,
+        submitted_at=variant.submitted_at,
+        reviewed_at=variant.reviewed_at,
+        approved_at=variant.approved_at,
+        published_at=variant.published_at,
     )
 
 
@@ -189,16 +246,17 @@ def get_developer_variant_or_404(
     return variant
 
 
-def ensure_verifier_has_subject(
+def require_assigned_subject(
     user: User,
+    role_label: str,
 ) -> int:
     if user.subject_id is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
-                "Для верификатора не назначен "
-                "предмет. Обратитесь к "
-                "супер-администратору."
+                f"Для роли «{role_label}» "
+                "не назначен предмет. Обратитесь "
+                "к супер-администратору."
             ),
         )
 
@@ -210,8 +268,9 @@ def get_verification_variant_or_404(
     variant_id: int,
     user: User,
 ) -> Variant:
-    subject_id = ensure_verifier_has_subject(
-        user
+    subject_id = require_assigned_subject(
+        user,
+        "Верификатор",
     )
 
     variant = (
@@ -231,6 +290,41 @@ def get_verification_variant_or_404(
             detail=(
                 "Вариант не найден в очереди "
                 "верификации вашего предмета."
+            ),
+        )
+
+    return variant
+
+
+def get_curator_variant_or_404(
+    db: Session,
+    variant_id: int,
+    user: User,
+    allowed_statuses: set[VariantStatus],
+) -> Variant:
+    subject_id = require_assigned_subject(
+        user,
+        "Куратор",
+    )
+
+    variant = (
+        db.query(Variant)
+        .filter(
+            Variant.id == variant_id,
+            Variant.subject_id == subject_id,
+            Variant.status.in_(
+                allowed_statuses
+            ),
+        )
+        .first()
+    )
+
+    if variant is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "Вариант не найден среди доступных "
+                "материалов вашего предмета."
             ),
         )
 
@@ -277,6 +371,22 @@ def get_question_in_variant_or_404(
         )
 
     return question
+
+
+def get_variant_questions_query(
+    db: Session,
+    variant_id: int,
+):
+    return (
+        db.query(Question)
+        .filter(
+            Question.variant_id == variant_id
+        )
+        .order_by(
+            Question.order_number.asc(),
+            Question.id.asc(),
+        )
+    )
 
 
 def get_valid_learning_objective(
@@ -339,17 +449,10 @@ def renumber_variant_questions(
     db: Session,
     variant_id: int,
 ) -> None:
-    questions = (
-        db.query(Question)
-        .filter(
-            Question.variant_id == variant_id
-        )
-        .order_by(
-            Question.order_number.asc(),
-            Question.id.asc(),
-        )
-        .all()
-    )
+    questions = get_variant_questions_query(
+        db,
+        variant_id,
+    ).all()
 
     for index, question in enumerate(
         questions,
@@ -540,7 +643,9 @@ def validate_question_for_submission(
                 ),
             )
 
-        option_keys.append(option_key)
+        option_keys.append(
+            option_key
+        )
 
         text_kz = str(
             option.get("text_kz", "")
@@ -595,6 +700,33 @@ def validate_question_for_submission(
         )
 
 
+def apply_search_filter(
+    query,
+    search: str | None,
+):
+    normalized_search = (
+        search.strip()
+        if search is not None
+        else ""
+    )
+
+    if not normalized_search:
+        return query
+
+    pattern = (
+        f"%{normalized_search}%"
+    )
+
+    return query.filter(
+        or_(
+            Variant.title.ilike(pattern),
+            Variant.description.ilike(
+                pattern
+            ),
+        )
+    )
+
+
 # ============================================================
 # Developer collection and dashboard
 # ============================================================
@@ -612,23 +744,16 @@ def create_variant(
         require_developer
     ),
 ):
-    if user.subject_id is None:
-        raise HTTPException(
-            status_code=(
-                status.HTTP_403_FORBIDDEN
-            ),
-            detail=(
-                "Для разработчика не назначен "
-                "предмет. Обратитесь к "
-                "супер-администратору."
-            ),
-        )
+    subject_id = require_assigned_subject(
+        user,
+        "Разработчик",
+    )
 
     variant = Variant(
         title=payload.title,
         description=payload.description,
         developer_id=user.id,
-        subject_id=user.subject_id,
+        subject_id=subject_id,
         status=VariantStatus.DRAFT,
     )
 
@@ -636,7 +761,9 @@ def create_variant(
     db.commit()
     db.refresh(variant)
 
-    return serialize_variant(variant)
+    return serialize_variant(
+        variant
+    )
 
 
 @router.get(
@@ -803,8 +930,8 @@ def get_developer_dashboard(
 
 
 # ============================================================
-# Verifier queue
-# These static routes must precede /{variant_id}.
+# Static verifier and curator collections
+# These routes must precede /{variant_id}.
 # ============================================================
 
 
@@ -827,10 +954,9 @@ def get_verification_queue(
         require_verifier
     ),
 ):
-    subject_id = (
-        ensure_verifier_has_subject(
-            user
-        )
+    subject_id = require_assigned_subject(
+        user,
+        "Верификатор",
     )
 
     query = (
@@ -871,6 +997,148 @@ def get_verification_queue(
     )
 
 
+@router.get(
+    "/curator-queue",
+    response_model=CuratorVariantList,
+)
+def get_curator_queue(
+    page: int = Query(
+        default=1,
+        ge=1,
+    ),
+    page_size: int = Query(
+        default=20,
+        ge=1,
+        le=100,
+    ),
+    search: str | None = Query(
+        default=None,
+        max_length=500,
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(
+        require_curator
+    ),
+):
+    subject_id = require_assigned_subject(
+        user,
+        "Куратор",
+    )
+
+    query = (
+        db.query(Variant)
+        .filter(
+            Variant.status
+            == VariantStatus.APPROVED,
+            Variant.subject_id
+            == subject_id,
+        )
+    )
+
+    query = apply_search_filter(
+        query,
+        search,
+    )
+
+    total = query.count()
+
+    variants = (
+        query
+        .order_by(
+            Variant.approved_at.asc(),
+            Variant.id.asc(),
+        )
+        .offset(
+            (page - 1) * page_size
+        )
+        .limit(page_size)
+        .all()
+    )
+
+    return CuratorVariantList(
+        items=[
+            serialize_curator_item(
+                variant
+            )
+            for variant in variants
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.get(
+    "/bank",
+    response_model=CuratorVariantList,
+)
+def get_variant_bank(
+    page: int = Query(
+        default=1,
+        ge=1,
+    ),
+    page_size: int = Query(
+        default=20,
+        ge=1,
+        le=100,
+    ),
+    search: str | None = Query(
+        default=None,
+        max_length=500,
+    ),
+    db: Session = Depends(get_db),
+    user: User = Depends(
+        require_curator
+    ),
+):
+    subject_id = require_assigned_subject(
+        user,
+        "Куратор",
+    )
+
+    query = (
+        db.query(Variant)
+        .filter(
+            Variant.status
+            == VariantStatus.IN_BANK,
+            Variant.subject_id
+            == subject_id,
+        )
+    )
+
+    query = apply_search_filter(
+        query,
+        search,
+    )
+
+    total = query.count()
+
+    variants = (
+        query
+        .order_by(
+            Variant.published_at.desc(),
+            Variant.id.desc(),
+        )
+        .offset(
+            (page - 1) * page_size
+        )
+        .limit(page_size)
+        .all()
+    )
+
+    return CuratorVariantList(
+        items=[
+            serialize_curator_item(
+                variant
+            )
+            for variant in variants
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
 # ============================================================
 # Developer submission
 # ============================================================
@@ -899,6 +1167,11 @@ def submit_variant_for_verification(
         variant
     )
 
+    subject_id = require_assigned_subject(
+        user,
+        "Разработчик",
+    )
+
     if variant.subject_id is None:
         raise HTTPException(
             status_code=(
@@ -909,20 +1182,9 @@ def submit_variant_for_verification(
             ),
         )
 
-    if user.subject_id is None:
-        raise HTTPException(
-            status_code=(
-                status.HTTP_403_FORBIDDEN
-            ),
-            detail=(
-                "Для разработчика не назначен "
-                "предмет."
-            ),
-        )
-
     if (
         variant.subject_id
-        != user.subject_id
+        != subject_id
     ):
         raise HTTPException(
             status_code=(
@@ -935,14 +1197,9 @@ def submit_variant_for_verification(
         )
 
     questions = (
-        db.query(Question)
-        .filter(
-            Question.variant_id
-            == variant.id
-        )
-        .order_by(
-            Question.order_number.asc(),
-            Question.id.asc(),
+        get_variant_questions_query(
+            db,
+            variant.id,
         )
         .all()
     )
@@ -982,6 +1239,10 @@ def submit_variant_for_verification(
     variant.reviewed_at = None
     variant.approved_at = None
 
+    variant.curator_id = None
+    variant.curator_comment = None
+    variant.published_at = None
+
     for question in questions:
         question.status = (
             QuestionStatus.VERIFICATION
@@ -998,7 +1259,9 @@ def submit_variant_for_verification(
     db.commit()
     db.refresh(variant)
 
-    return serialize_variant(variant)
+    return serialize_variant(
+        variant
+    )
 
 
 # ============================================================
@@ -1026,14 +1289,9 @@ def get_verification_questions(
     )
 
     questions = (
-        db.query(Question)
-        .filter(
-            Question.variant_id
-            == variant.id
-        )
-        .order_by(
-            Question.order_number.asc(),
-            Question.id.asc(),
+        get_variant_questions_query(
+            db,
+            variant.id,
         )
         .all()
     )
@@ -1081,14 +1339,9 @@ def review_variant(
     )
 
     questions = (
-        db.query(Question)
-        .filter(
-            Question.variant_id
-            == variant.id
-        )
-        .order_by(
-            Question.order_number.asc(),
-            Question.id.asc(),
+        get_variant_questions_query(
+            db,
+            variant.id,
         )
         .all()
     )
@@ -1111,7 +1364,6 @@ def review_variant(
     variant.review_comment = (
         payload.comment
     )
-
     variant.reviewed_at = reviewed_at
 
     if payload.approved:
@@ -1127,15 +1379,12 @@ def review_variant(
             question.status = (
                 QuestionStatus.IN_BANK
             )
-
             question.reviewer_id = (
                 user.id
             )
-
             question.reviewed_at = (
                 reviewed_at
             )
-
             question.approved_at = (
                 reviewed_at
             )
@@ -1150,15 +1399,12 @@ def review_variant(
             question.status = (
                 QuestionStatus.REVISION
             )
-
             question.reviewer_id = (
                 user.id
             )
-
             question.reviewed_at = (
                 reviewed_at
             )
-
             question.approved_at = None
 
     db.commit()
@@ -1169,10 +1415,8 @@ def review_variant(
         title=variant.title,
         status=variant.status,
         reviewer_id=variant.reviewer_id,
-        reviewer_name=(
-            get_reviewer_name(
-                variant
-            )
+        reviewer_name=get_user_name(
+            variant.reviewer
         ),
         review_comment=(
             variant.review_comment
@@ -1188,6 +1432,177 @@ def review_variant(
         ),
         approved_at=(
             variant.approved_at
+        ),
+    )
+
+
+# ============================================================
+# Curator operations
+# ============================================================
+
+
+@router.get(
+    "/{variant_id}/curator-questions",
+    response_model=VariantQuestionList,
+)
+def get_curator_questions(
+    variant_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(
+        require_curator
+    ),
+):
+    variant = (
+        get_curator_variant_or_404(
+            db,
+            variant_id,
+            user,
+            CURATOR_VISIBLE_STATUSES,
+        )
+    )
+
+    questions = (
+        get_variant_questions_query(
+            db,
+            variant.id,
+        )
+        .all()
+    )
+
+    if not questions:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_422_UNPROCESSABLE_ENTITY
+            ),
+            detail=(
+                "В варианте не найдены вопросы."
+            ),
+        )
+
+    return VariantQuestionList(
+        items=[
+            serialize_question(
+                question
+            )
+            for question in questions
+        ],
+        total=len(questions),
+    )
+
+
+@router.post(
+    "/{variant_id}/publish",
+    response_model=VariantPublishResult,
+)
+def publish_variant_to_bank(
+    variant_id: int,
+    payload: VariantPublish,
+    db: Session = Depends(get_db),
+    user: User = Depends(
+        require_curator
+    ),
+):
+    variant = (
+        get_curator_variant_or_404(
+            db,
+            variant_id,
+            user,
+            {
+                VariantStatus.APPROVED,
+            },
+        )
+    )
+
+    questions = (
+        get_variant_questions_query(
+            db,
+            variant.id,
+        )
+        .all()
+    )
+
+    if not questions:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_422_UNPROCESSABLE_ENTITY
+            ),
+            detail=(
+                "Нельзя опубликовать "
+                "пустой вариант."
+            ),
+        )
+
+    for question in questions:
+        if (
+            question.subject_id
+            != variant.subject_id
+        ):
+            raise HTTPException(
+                status_code=(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY
+                ),
+                detail=(
+                    f"Предмет вопроса "
+                    f"№{question.order_number} "
+                    "не совпадает с предметом "
+                    "варианта."
+                ),
+            )
+
+        if question.approved_at is None:
+            raise HTTPException(
+                status_code=(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY
+                ),
+                detail=(
+                    f"Вопрос №{question.order_number} "
+                    "не был утверждён "
+                    "верификатором."
+                ),
+            )
+
+    published_at = (
+        datetime.now(timezone.utc)
+    )
+
+    variant.status = (
+        VariantStatus.IN_BANK
+    )
+    variant.curator_id = user.id
+    variant.curator_comment = (
+        payload.comment
+    )
+    variant.published_at = (
+        published_at
+    )
+
+    for question in questions:
+        question.status = (
+            QuestionStatus.IN_BANK
+        )
+
+    db.commit()
+    db.refresh(variant)
+
+    return VariantPublishResult(
+        id=variant.id,
+        title=variant.title,
+        status=variant.status,
+        curator_id=variant.curator_id,
+        curator_name=get_user_name(
+            variant.curator
+        ),
+        curator_comment=(
+            variant.curator_comment
+        ),
+        question_count=len(
+            variant.questions
+        ),
+        approved_at=(
+            variant.approved_at
+        ),
+        published_at=(
+            variant.published_at
         ),
     )
 
@@ -1217,14 +1632,9 @@ def get_variant_questions(
     )
 
     questions = (
-        db.query(Question)
-        .filter(
-            Question.variant_id
-            == variant.id
-        )
-        .order_by(
-            Question.order_number.asc(),
-            Question.id.asc(),
+        get_variant_questions_query(
+            db,
+            variant.id,
         )
         .all()
     )
@@ -1265,6 +1675,11 @@ def create_question_in_variant(
         variant
     )
 
+    subject_id = require_assigned_subject(
+        user,
+        "Разработчик",
+    )
+
     if variant.subject_id is None:
         raise HTTPException(
             status_code=(
@@ -1276,9 +1691,8 @@ def create_question_in_variant(
         )
 
     if (
-        user.subject_id is None
-        or variant.subject_id
-        != user.subject_id
+        variant.subject_id
+        != subject_id
     ):
         raise HTTPException(
             status_code=(
@@ -1636,7 +2050,9 @@ def get_variant(
         )
     )
 
-    return serialize_variant(variant)
+    return serialize_variant(
+        variant
+    )
 
 
 @router.put(
@@ -1690,7 +2106,9 @@ def update_variant(
     db.commit()
     db.refresh(variant)
 
-    return serialize_variant(variant)
+    return serialize_variant(
+        variant
+    )
 
 
 @router.delete(

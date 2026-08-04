@@ -57,6 +57,10 @@ class Variant(Base):
         lazy="joined",
     )
 
+    # ========================================================
+    # Developer
+    # ========================================================
+
     developer_id = Column(
         Integer,
         ForeignKey(
@@ -72,6 +76,10 @@ class Variant(Base):
         foreign_keys=[developer_id],
         lazy="joined",
     )
+
+    # ========================================================
+    # Verifier
+    # ========================================================
 
     reviewer_id = Column(
         Integer,
@@ -94,6 +102,35 @@ class Variant(Base):
         nullable=True,
     )
 
+    # ========================================================
+    # Curator
+    # ========================================================
+
+    curator_id = Column(
+        Integer,
+        ForeignKey(
+            "users.id",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+        index=True,
+    )
+
+    curator = relationship(
+        "User",
+        foreign_keys=[curator_id],
+        lazy="joined",
+    )
+
+    curator_comment = Column(
+        Text,
+        nullable=True,
+    )
+
+    # ========================================================
+    # Questions
+    # ========================================================
+
     questions = relationship(
         "Question",
         back_populates="variant",
@@ -101,6 +138,10 @@ class Variant(Base):
         order_by="Question.order_number",
         lazy="selectin",
     )
+
+    # ========================================================
+    # Status
+    # ========================================================
 
     status = Column(
         Enum(
@@ -112,16 +153,26 @@ class Variant(Base):
         index=True,
     )
 
+    # ========================================================
+    # Dates
+    # ========================================================
+
     created_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(
+            timezone.utc
+        ),
         nullable=False,
     )
 
     updated_at = Column(
         DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+        default=lambda: datetime.now(
+            timezone.utc
+        ),
+        onupdate=lambda: datetime.now(
+            timezone.utc
+        ),
         nullable=False,
     )
 
@@ -136,6 +187,11 @@ class Variant(Base):
     )
 
     approved_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    published_at = Column(
         DateTime(timezone=True),
         nullable=True,
     )

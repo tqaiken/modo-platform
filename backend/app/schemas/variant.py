@@ -135,6 +135,35 @@ class VariantReview(BaseModel):
         return normalized
 
 
+class VariantPublish(BaseModel):
+    """
+    Публикация утверждённого варианта куратором.
+
+    Выполняет переход:
+        APPROVED -> IN_BANK
+    """
+
+    comment: str = Field(
+        min_length=1,
+        max_length=5000,
+    )
+
+    @field_validator("comment")
+    @classmethod
+    def normalize_comment(
+        cls,
+        value: str,
+    ) -> str:
+        normalized = value.strip()
+
+        if not normalized:
+            raise ValueError(
+                "Комментарий к публикации обязателен."
+            )
+
+        return normalized
+
+
 class VariantRead(BaseModel):
     """
     Основное представление варианта.
@@ -154,6 +183,10 @@ class VariantRead(BaseModel):
     reviewer_name: str | None = None
     review_comment: str | None = None
 
+    curator_id: int | None = None
+    curator_name: str | None = None
+    curator_comment: str | None = None
+
     status: VariantStatus
     question_count: int = 0
 
@@ -162,6 +195,7 @@ class VariantRead(BaseModel):
     submitted_at: datetime | None
     reviewed_at: datetime | None
     approved_at: datetime | None
+    published_at: datetime | None = None
 
     model_config = {
         "from_attributes": True,
@@ -239,6 +273,87 @@ class VariantReviewResult(BaseModel):
     submitted_at: datetime | None
     reviewed_at: datetime | None
     approved_at: datetime | None
+
+    model_config = {
+        "from_attributes": True,
+    }
+
+
+class CuratorVariantItem(BaseModel):
+    """
+    Краткое представление варианта
+    в очереди куратора или в банке.
+
+    Для очереди ожидается статус APPROVED.
+    Для банка ожидается статус IN_BANK.
+    """
+
+    id: int
+    title: str
+    description: str | None
+
+    subject_id: int | None
+
+    developer_id: int
+    developer_name: str
+
+    reviewer_id: int | None = None
+    reviewer_name: str | None = None
+    review_comment: str | None = None
+
+    curator_id: int | None = None
+    curator_name: str | None = None
+    curator_comment: str | None = None
+
+    status: VariantStatus
+    question_count: int = 0
+
+    created_at: datetime
+    updated_at: datetime
+    submitted_at: datetime | None
+    reviewed_at: datetime | None
+    approved_at: datetime | None
+    published_at: datetime | None = None
+
+    model_config = {
+        "from_attributes": True,
+    }
+
+
+class CuratorVariantList(BaseModel):
+    """
+    Постраничный список вариантов
+    для кабинета куратора.
+
+    Используется для:
+        GET /variants/curator-queue
+        GET /variants/bank
+    """
+
+    items: list[CuratorVariantItem]
+    total: int
+    page: int
+    page_size: int
+
+
+class VariantPublishResult(BaseModel):
+    """
+    Результат публикации варианта
+    в банке заданий.
+    """
+
+    id: int
+    title: str
+    status: VariantStatus
+
+    curator_id: int | None
+    curator_name: str | None
+    curator_comment: str | None
+
+    question_count: int
+
+    approved_at: datetime | None
+    published_at: datetime | None
 
     model_config = {
         "from_attributes": True,

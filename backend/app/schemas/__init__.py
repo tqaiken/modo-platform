@@ -23,9 +23,13 @@ from app.schemas.question import (
 )
 
 from app.schemas.variant import (
+    CuratorVariantItem,
+    CuratorVariantList,
     VariantCreate,
     VariantDashboard,
     VariantList,
+    VariantPublish,
+    VariantPublishResult,
     VariantQueueItem,
     VariantQueueList,
     VariantRead,
@@ -68,9 +72,13 @@ __all__ = [
     "VariantQuestionList",
     "VariantQuestionRead",
     "VariantQuestionUpdate",
+    "CuratorVariantItem",
+    "CuratorVariantList",
     "VariantCreate",
     "VariantDashboard",
     "VariantList",
+    "VariantPublish",
+    "VariantPublishResult",
     "VariantQueueItem",
     "VariantQueueList",
     "VariantRead",
