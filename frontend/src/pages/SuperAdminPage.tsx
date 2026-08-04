@@ -1006,7 +1006,9 @@ export default function SuperAdminPage() {
                     </td>
 
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-600">
-                      {getSubjectTitle(user.subject_id)}
+                      {SUBJECT_REQUIRED_ROLES.includes(user.role)
+                        ? getSubjectTitle(user.subject_id)
+                        : "Не требуется"}
                     </td>
 
                     <td className="whitespace-nowrap px-6 py-4">

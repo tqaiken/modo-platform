@@ -299,19 +299,18 @@ def get_verification_variant_or_404(
 def get_curator_variant_or_404(
     db: Session,
     variant_id: int,
-    user: User,
     allowed_statuses: set[VariantStatus],
 ) -> Variant:
-    subject_id = require_assigned_subject(
-        user,
-        "Куратор",
-    )
+    """
+    Возвращает вариант, доступный куратору.
 
+    Куратор имеет глобальный доступ:
+    предмет куратора не проверяется.
+    """
     variant = (
         db.query(Variant)
         .filter(
             Variant.id == variant_id,
-            Variant.subject_id == subject_id,
             Variant.status.in_(
                 allowed_statuses
             ),
@@ -323,13 +322,12 @@ def get_curator_variant_or_404(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=(
-                "Вариант не найден среди доступных "
-                "материалов вашего предмета."
+                "Вариант не найден среди "
+                "доступных материалов."
             ),
         )
 
     return variant
-
 
 def ensure_variant_is_editable(
     variant: Variant,
@@ -1015,25 +1013,34 @@ def get_curator_queue(
         default=None,
         max_length=500,
     ),
+    subject_id: int | None = Query(
+        default=None,
+        ge=1,
+    ),
     db: Session = Depends(get_db),
     user: User = Depends(
         require_curator
     ),
 ):
-    subject_id = require_assigned_subject(
-        user,
-        "Куратор",
-    )
+    """
+    Возвращает все утверждённые варианты.
 
+    Куратор имеет глобальный доступ.
+    Фильтр предмета является необязательным.
+    """
     query = (
         db.query(Variant)
         .filter(
             Variant.status
-            == VariantStatus.APPROVED,
-            Variant.subject_id
-            == subject_id,
+            == VariantStatus.APPROVED
         )
     )
+
+    if subject_id is not None:
+        query = query.filter(
+            Variant.subject_id
+            == subject_id
+        )
 
     query = apply_search_filter(
         query,
@@ -1068,6 +1075,19 @@ def get_curator_queue(
     )
 
 
+    return CuratorVariantList(
+        items=[
+            serialize_curator_item(
+                variant
+            )
+            for variant in variants
+        ],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
 @router.get(
     "/bank",
     response_model=CuratorVariantList,
@@ -1086,25 +1106,34 @@ def get_variant_bank(
         default=None,
         max_length=500,
     ),
+    subject_id: int | None = Query(
+        default=None,
+        ge=1,
+    ),
     db: Session = Depends(get_db),
     user: User = Depends(
         require_curator
     ),
 ):
-    subject_id = require_assigned_subject(
-        user,
-        "Куратор",
-    )
+    """
+    Возвращает все варианты банка.
 
+    Куратор имеет глобальный доступ.
+    Фильтр предмета является необязательным.
+    """
     query = (
         db.query(Variant)
         .filter(
             Variant.status
-            == VariantStatus.IN_BANK,
-            Variant.subject_id
-            == subject_id,
+            == VariantStatus.IN_BANK
         )
     )
+
+    if subject_id is not None:
+        query = query.filter(
+            Variant.subject_id
+            == subject_id
+        )
 
     query = apply_search_filter(
         query,
@@ -1137,7 +1166,6 @@ def get_variant_bank(
         page=page,
         page_size=page_size,
     )
-
 
 # ============================================================
 # Developer submission
@@ -1456,7 +1484,6 @@ def get_curator_questions(
         get_curator_variant_or_404(
             db,
             variant_id,
-            user,
             CURATOR_VISIBLE_STATUSES,
         )
     )
@@ -1506,7 +1533,6 @@ def publish_variant_to_bank(
         get_curator_variant_or_404(
             db,
             variant_id,
-            user,
             {
                 VariantStatus.APPROVED,
             },
