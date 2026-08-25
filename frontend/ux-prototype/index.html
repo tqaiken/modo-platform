@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BAGALAU — UX Прототип</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --primary: #1e40af;
+            --primary-light: #3b82f6;
+            --primary-dark: #1e3a8a;
+            --success: #059669;
+            --warning: #d97706;
+            --danger: #dc2626;
+            --gray-50: #f9fafb;
+            --gray-100: #f3f4f6;
+            --gray-200: #e5e7eb;
+            --gray-300: #d1d5db;
+            --gray-500: #6b7280;
+            --gray-700: #374151;
+            --gray-900: #111827;
+            --sidebar-w: 260px;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--gray-50); color: var(--gray-900); }
+
+        /* ─── Sidebar ─── */
+        .sidebar {
+            position: fixed; left: 0; top: 0; bottom: 0; width: var(--sidebar-w);
+            background: var(--primary-dark); color: white; overflow-y: auto;
+            display: flex; flex-direction: column; z-index: 100;
+        }
+        .sidebar-logo {
+            padding: 20px; font-size: 22px; font-weight: 700; letter-spacing: 2px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .sidebar-logo span { color: #60a5fa; }
+        .sidebar-role {
+            padding: 12px 20px; font-size: 12px; text-transform: uppercase;
+            letter-spacing: 1px; color: rgba(255,255,255,0.5);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+        .sidebar-nav { flex: 1; padding: 8px 0; }
+        .nav-item {
+            padding: 10px 20px; cursor: pointer; display: flex; align-items: center; gap: 10px;
+            color: rgba(255,255,255,0.7); font-size: 14px; transition: all 0.15s;
+        }
+        .nav-item:hover { background: rgba(255,255,255,0.1); color: white; }
+        .nav-item.active { background: rgba(255,255,255,0.15); color: white; font-weight: 600; }
+        .nav-item .icon { width: 20px; text-align: center; }
+        .nav-section { padding: 16px 20px 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.35); }
+
+        /* ─── Main ─── */
+        .main { margin-left: var(--sidebar-w); min-height: 100vh; }
+        .topbar {
+            background: white; border-bottom: 1px solid var(--gray-200);
+            padding: 12px 24px; display: flex; justify-content: space-between; align-items: center;
+            position: sticky; top: 0; z-index: 50;
+        }
+        .topbar-title { font-size: 18px; font-weight: 600; }
+        .topbar-user { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+        .topbar-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; }
+        .content { padding: 24px; }
+
+        /* ─── Cards ─── */
+        .card { background: white; border-radius: 12px; border: 1px solid var(--gray-200); padding: 20px; margin-bottom: 16px; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .card-title { font-size: 16px; font-weight: 600; }
+        .card-subtitle { font-size: 13px; color: var(--gray-500); margin-top: 2px; }
+
+        /* ─── Stats ─── */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: white; border-radius: 12px; border: 1px solid var(--gray-200); padding: 16px 20px; }
+        .stat-label { font-size: 13px; color: var(--gray-500); margin-bottom: 4px; }
+        .stat-value { font-size: 28px; font-weight: 700; }
+        .stat-change { font-size: 12px; margin-top: 4px; }
+        .stat-change.up { color: var(--success); }
+        .stat-change.down { color: var(--danger); }
+
+        /* ─── Tables ─── */
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th { text-align: left; padding: 10px 12px; background: var(--gray-50); border-bottom: 2px solid var(--gray-200); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--gray-500); }
+        td { padding: 10px 12px; border-bottom: 1px solid var(--gray-100); }
+        tr:hover { background: var(--gray-50); }
+
+        /* ─── Badges ─── */
+        .badge {
+            display: inline-block; padding: 2px 8px; border-radius: 9999px;
+            font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .badge-green { background: #d1fae5; color: #065f46; }
+        .badge-yellow { background: #fef3c7; color: #92400e; }
+        .badge-red { background: #fee2e2; color: #991b1b; }
+        .badge-blue { background: #dbeafe; color: #1e40af; }
+        .badge-gray { background: var(--gray-100); color: var(--gray-700); }
+        .badge-purple { background: #ede9fe; color: #5b21b6; }
+
+        /* ─── Buttons ─── */
+        .btn {
+            padding: 8px 16px; border-radius: 8px; font-size: 14px; font-weight: 500;
+            cursor: pointer; border: none; transition: all 0.15s;
+        }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: var(--primary-dark); }
+        .btn-secondary { background: white; color: var(--gray-700); border: 1px solid var(--gray-300); }
+        .btn-secondary:hover { background: var(--gray-50); }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-success { background: var(--success); color: white; }
+
+        /* ─── Forms ─── */
+        .form-group { margin-bottom: 16px; }
+        .form-label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; color: var(--gray-700); }
+        .form-input, .form-select, .form-textarea {
+            width: 100%; padding: 8px 12px; border: 1px solid var(--gray-300); border-radius: 8px;
+            font-size: 14px; transition: border-color 0.15s;
+        }
+        .form-input:focus, .form-select:focus, .form-textarea:focus { outline: none; border-color: var(--primary-light); box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+        .form-textarea { resize: vertical; min-height: 80px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+        /* ─── Tabs ─── */
+        .tabs { display: flex; gap: 0; border-bottom: 2px solid var(--gray-200); margin-bottom: 20px; }
+        .tab { padding: 10px 16px; font-size: 14px; cursor: pointer; color: var(--gray-500); border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all 0.15s; }
+        .tab:hover { color: var(--gray-700); }
+        .tab.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+
+        /* ─── Progress ─── */
+        .progress-bar { height: 8px; background: var(--gray-200); border-radius: 4px; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+        .progress-fill.green { background: var(--success); }
+        .progress-fill.yellow { background: var(--warning); }
+        .progress-fill.red { background: var(--danger); }
+        .progress-fill.blue { background: var(--primary-light); }
+
+        /* ─── Timer ─── */
+        .timer { font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--primary); }
+        .timer.warning { color: var(--warning); }
+        .timer.danger { color: var(--danger); }
+
+        /* ─── Question card ─── */
+        .question-card { border: 2px solid var(--gray-200); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+        .question-card.active { border-color: var(--primary-light); }
+        .question-number { font-size: 12px; font-weight: 600; color: var(--primary); text-transform: uppercase; margin-bottom: 8px; }
+        .question-text { font-size: 15px; line-height: 1.6; margin-bottom: 16px; }
+        .option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--gray-200); border-radius: 8px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; }
+        .option:hover { border-color: var(--primary-light); background: rgba(59,130,246,0.03); }
+        .option.selected { border-color: var(--primary); background: rgba(59,130,246,0.08); }
+        .option-marker { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--gray-300); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+        .option.selected .option-marker { border-color: var(--primary); background: var(--primary); color: white; }
+
+        /* ─── Blueprint matrix ─── */
+        .matrix-table { font-size: 12px; }
+        .matrix-table th, .matrix-table td { padding: 6px 8px; text-align: center; }
+        .matrix-cell { width: 40px; height: 32px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; }
+        .matrix-cell.filled { background: var(--primary); color: white; }
+        .matrix-cell.empty { background: var(--gray-100); color: var(--gray-400); }
+
+        /* ─── Screen container ─── */
+        .screen { display: none; }
+        .screen.active { display: block; }
+
+        /* ─── Role switcher ─── */
+        .role-switcher { display: flex; gap: 4px; background: var(--gray-100); border-radius: 8px; padding: 3px; }
+        .role-btn { padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; border: none; background: transparent; color: var(--gray-500); font-weight: 500; transition: all 0.15s; }
+        .role-btn.active { background: white; color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+        /* ─── Charts placeholder ─── */
+        .chart-placeholder { height: 200px; background: linear-gradient(135deg, var(--gray-50), var(--gray-100)); border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--gray-400); font-size: 14px; }
+
+        /* ─── Level bars ─── */
+        .level-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+        .level-label { width: 120px; font-size: 13px; color: var(--gray-700); }
+        .level-bar-track { flex: 1; height: 24px; background: var(--gray-100); border-radius: 4px; overflow: hidden; }
+        .level-bar-fill { height: 100%; border-radius: 4px; display: flex; align-items: center; padding-left: 8px; font-size: 11px; font-weight: 600; color: white; }
+        .level-count { width: 30px; text-align: right; font-size: 13px; font-weight: 600; }
+
+        /* ─── Certificate preview ─── */
+        .cert-preview {
+            border: 3px solid var(--primary); border-radius: 12px; padding: 32px;
+            text-align: center; background: linear-gradient(135deg, #f0f4ff, #e8eeff);
+            max-width: 500px; margin: 0 auto;
+        }
+        .cert-title { font-size: 14px; text-transform: uppercase; letter-spacing: 3px; color: var(--primary); margin-bottom: 8px; }
+        .cert-name { font-size: 24px; font-weight: 700; margin: 16px 0 8px; }
+        .cert-details { font-size: 14px; color: var(--gray-500); }
+        .cert-qr { margin-top: 16px; }
+        .cert-qr-placeholder { width: 80px; height: 80px; background: var(--gray-200); border-radius: 8px; margin: 0 auto; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--gray-400); }
+
+        /* ─── Responsive ─── */
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main { margin-left: 0; }
+            .form-row { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: 1fr 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- SIDEBAR                                                               -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="sidebar">
+    <div class="sidebar-logo">BAGA<span>LAU</span></div>
+    <div class="sidebar-role" id="sidebarRole">Владелец</div>
+    <div class="sidebar-nav" id="sidebarNav"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- MAIN                                                                  -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="main">
+    <div class="topbar">
+        <div class="topbar-title" id="screenTitle">Дашборд</div>
+        <div class="topbar-user">
+            <div class="role-switcher" id="roleSwitcher"></div>
+            <div class="topbar-avatar" id="userAvatar">ИП</div>
+            <span id="userName">Иванов И.П.</span>
+        </div>
+    </div>
+    <div class="content" id="content"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════════════════════════════════════
+
+const ROLES = {
+    OWNER: { name: 'Владелец', icon: '👑', color: '#7c3aed' },
+    SUPER_ADMIN: { name: 'Суперадмин', icon: '⚙️', color: '#2563eb' },
+    TEST_ADMIN: { name: 'Тест-админ', icon: '📋', color: '#0891b2' },
+    DEVELOPER: { name: 'Разработчик', icon: '✏️', color: '#059669' },
+    VERIFIER: { name: 'Верификатор', icon: '🔍', color: '#d97706' },
+    STUDENT: { name: 'Ученик', icon: '🎓', color: '#dc2626' },
+};
+
+const NAV_ITEMS = {
+    OWNER: [
+        { id: 'owner-dashboard', label: 'Обзор платформы', icon: '📊' },
+        { id: 'owner-orgs', label: 'Организации', icon: '🏫' },
+        { id: 'owner-subjects', label: 'Предметы', icon: '📚' },
+        { id: 'owner-users', label: 'Пользователи', icon: '👥' },
+        { id: 'owner-audit', label: 'Аудит', icon: '🔒' },
+    ],
+    SUPER_ADMIN: [
+        { id: 'sa-dashboard', label: 'Дашборд', icon: '📊' },
+        { id: 'sa-orgs', label: 'Школы', icon: '🏫' },
+        { id: 'sa-import', label: 'Импорт', icon: '📤' },
+        { id: 'sa-users', label: 'Пользователи', icon: '👥' },
+    ],
+    TEST_ADMIN: [
+        { id: 'ta-dashboard', label: 'Дашборд', icon: '📊' },
+        { id: 'ta-diagnostics', label: 'Диагностики', icon: '📝' },
+        { id: 'ta-sessions', label: 'Сессии', icon: '⏱️' },
+        { id: 'ta-results', label: 'Результаты', icon: '📈' },
+    ],
+    DEVELOPER: [
+        { id: 'dev-dashboard', label: 'Мои задания', icon: '📊' },
+        { id: 'dev-editor', label: 'Редактор', icon: '✏️' },
+        { id: 'dev-bank', label: 'Банк заданий', icon: '🏦' },
+        { id: 'dev-blueprint', label: 'Blueprint', icon: '📐' },
+    ],
+    VERIFIER: [
+        { id: 'ver-dashboard', label: 'Очередь проверки', icon: '📊' },
+        { id: 'ver-review', label: 'Экспертиза', icon: '🔍' },
+    ],
+    STUDENT: [
+        { id: 'stu-dashboard', label: 'Мои диагностики', icon: '📊' },
+        { id: 'stu-test', label: 'Прохождение', icon: '📝' },
+        { id: 'stu-result', label: 'Результат', icon: '📈' },
+        { id: 'stu-certificate', label: 'Сертификат', icon: '🏅' },
+    ],
+};
+
+let currentRole = 'OWNER';
+let currentScreen = 'owner-dashboard';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderRoleSwitcher() {
+    const el = document.getElementById('roleSwitcher');
+    el.innerHTML = Object.entries(ROLES).map(([key, r]) =>
+        `<button class="role-btn ${key === currentRole ? 'active' : ''}" onclick="switchRole('${key}')">${r.icon} ${r.name}</button>`
+    ).join('');
+}
+
+function renderSidebar() {
+    document.getElementById('sidebarRole').textContent = ROLES[currentRole].name;
+    const nav = document.getElementById('sidebarNav');
+    const items = NAV_ITEMS[currentRole];
+    nav.innerHTML = items.map(item =>
+        `<div class="nav-item ${item.id === currentScreen ? 'active' : ''}" onclick="navigate('${item.id}')">
+            <span class="icon">${item.icon}</span>${item.label}
+        </div>`
+    ).join('');
+}
+
+function navigate(screenId) {
+    currentScreen = screenId;
+    renderSidebar();
+    renderScreen();
+}
+
+function switchRole(role) {
+    currentRole = role;
+    currentScreen = NAV_ITEMS[role][0].id;
+    renderRoleSwitcher();
+    renderSidebar();
+    renderScreen();
+}
+
+function renderScreen() {
+    const content = document.getElementById('content');
+    const title = document.getElementById('screenTitle');
+    const item = NAV_ITEMS[currentRole].find(i => i.id === currentScreen);
+    title.textContent = item ? item.label : '';
+
+    const screens = {
+        // ─── OWNER ───
+        'owner-dashboard': renderOwnerDashboard,
+        'owner-orgs': renderOwnerOrgs,
+        'owner-subjects': renderOwnerSubjects,
+        'owner-users': renderOwnerUsers,
+        'owner-audit': renderOwnerAudit,
+        // ─── SUPER ADMIN ───
+        'sa-dashboard': renderSADashboard,
+        'sa-orgs': renderSAOrgs,
+        'sa-import': renderSAImport,
+        'sa-users': renderSAUsers,
+        // ─── TEST ADMIN ───
+        'ta-dashboard': renderTADashboard,
+        'ta-diagnostics': renderTADiagnostics,
+        'ta-sessions': renderTASessions,
+        'ta-results': renderTAResults,
+        // ─── DEVELOPER ───
+        'dev-dashboard': renderDevDashboard,
+        'dev-editor': renderDevEditor,
+        'dev-bank': renderDevBank,
+        'dev-blueprint': renderDevBlueprint,
+        // ─── VERIFIER ───
+        'ver-dashboard': renderVerDashboard,
+        'ver-review': renderVerReview,
+        // ─── STUDENT ───
+        'stu-dashboard': renderStuDashboard,
+        'stu-test': renderStuTest,
+        'stu-result': renderStuResult,
+        'stu-certificate': renderStuCertificate,
+    };
+
+    const renderFn = screens[currentScreen];
+    content.innerHTML = renderFn ? renderFn() : '<p>Экран в разработке</p>';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OWNER SCREENS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderOwnerDashboard() {
+    return `
+    <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Школ в пилоте</div><div class="stat-value">3</div><div class="stat-change up">↑ Готовы к запуску</div></div>
+        <div class="stat-card"><div class="stat-label">Учеников</div><div class="stat-value">847</div><div class="stat-change">9 класс, 5 предметов</div></div>
+        <div class="stat-card"><div class="stat-label">Заданий в банке</div><div class="stat-value">1 248</div><div class="stat-change up">↑ 156 на этой неделе</div></div>
+        <div class="stat-card"><div class="stat-label">Диагностик проведено</div><div class="stat-value">12</div><div class="stat-change">Пилот: 3 школы</div></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><div class="card-title">Активность по школам</div></div>
+        <div class="chart-placeholder">📊 График активности (интеграция с Chart.js)</div>
+    </div>
+    <div class="card">
+        <div class="card-header"><div class="card-title">Последние события</div></div>
+        <div class="table-wrap"><table>
+            <tr><th>Время</th><th>Событие</th><th>Пользователь</th><th>Детали</th></tr>
+            <tr><td>12:34</td><td><span class="badge badge-green">Диагностика завершена</span></td><td>Школа №42</td><td>Математика, 9А — 28 учеников</td></tr>
+            <tr><td>11:20</td><td><span class="badge badge-blue">Задание утверждено</span></td><td>Петрова А.С.</td><td>Физика, §3.2, 5 заданий</td></tr>
+            <tr><td>10:05</td><td><span class="badge badge-yellow">Импорт учеников</span></td><td>Сидоров К.М.</td><td>Гимназия №7 — 156 записей</td></tr>
+        </table></div>
+    </div>`;
+}
+
+function renderOwnerOrgs() {
+    return `
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Организации</div>
+            <button class="btn btn-primary btn-sm">+ Добавить школу</button>
+        </div>
+        <div class="table-wrap"><table>
+            <tr><th>Школа</th><th>БИН</th><th>Регион</th><th>Классов</th><th>Учеников</th><th>Статус</th></tr>
+            <tr><td>Гимназия №42</td><td>123456789012</td><td>г. Алматы</td><td>4</td><td>112</td><td><span class="badge badge-green">Активна</span></td></tr>
+            <tr><td>Школа №15</td><td>987654321098</td><td>г. Астана</td><td>3</td><td>89</td><td><span class="badge badge-green">Активна</span></td></tr>
+            <tr><td>Лицей №7</td><td>555555555555</td><td>г. Шымкент</td><td>2</td><td>64</td><td><span class="badge badge-yellow">Настройка</span></td></tr>
+        </table></div>
+    </div>`;
+}
+
+function renderOwnerSubjects() {
+    return `
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Предметы (9 класс)</div>
+            <button class="btn btn-primary btn-sm">+ Добавить предмет</button>
+        </div>
+        <div class="table-wrap"><table>
+            <tr><th>Код</th><th>Название (RU)</th><th>Название (KZ)</th><th>Заданий</th><th>Статус</th></tr>
+            <tr><td>MATH_9</td><td>Математика</td><td>Математика</td><td>312</td><td><span class="badge badge-green">Активен</span></td></tr>
+            <tr><td>KAZ_9</td><td>Казахский язык</td><td>Қазақ тілі</td><td>245</td><td><span class="badge badge-green">Активен</span></td></tr>
+            <tr><td>RUS_9</td><td>Русский язык</td><td>Орыс тілі</td><td>198</td><td><span class="badge badge-green">Активен</span></td></tr>
+            <tr><td>GEO_9</td><td>География</td><td>География</td><td>267</td><td><span class="badge badge-yellow">В работе</span></td></tr>
+            <tr><td>PHY_9</td><td>Физика</td><td>Физика</td><td>226</td><td><span class="badge badge-yellow">В работе</span></td></tr>
+        </table></div>
+    </div>`;
+}
+
+function renderOwnerUsers() {
+    return `
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Пользователи</div>
+            <div style="display:flex;gap:8px">
+                <select class="form-select" style="width:auto"><option>Все роли</option><option>Суперадмины</option><option>Тест-админы</option><option>Разработчики</option><option>Верификаторы</option><option>Ученики</option></select>
+                <button class="btn btn-primary btn-sm">+ Пригласить</button>
+            </div>
+        </div>
+        <div class="table-wrap"><table>
+            <tr><th>Имя</th><th>Email</th><th>Роль</th><th>Организация</th><th>2FA</th><th>Статус</th></tr>
+            <tr><td>Иванов И.П.</td><td>ivanov@bagalau.kz</td><td><span class="badge badge-purple">Владелец</span></td><td>—</td><td>✅</td><td><span class="badge badge-green">Активен</span></td></tr>
+            <tr><td>Петрова А.С.</td><td>petrova@school42.kz</td><td><span class="badge badge-blue">Суперадмин</span></td><td>Гимназия №42</td><td>✅</td><td><span class="badge badge-green">Активен</span></td></tr>
+            <tr><td>Сидоров К.М.</td><td>sidorov@school42.kz</td><td><span class="badge badge-yellow">Тест-админ</span></td><td>Гимназия №42</td><td>❌</td><td><span class="badge badge-green">Активен</span></td></tr>
+            <tr><td>Козлова Е.В.</td><td>kozlova@expert.kz</td><td><span class="badge badge-gray">Разработчик</span></td><td>—</td><td>✅</td><td><span class="badge badge-green">Активен</span></td></tr>
+        </table></div>
+    </div>`;
+}
+
+function renderOwnerAudit() {
+    return `
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Аудит-лог</div>
+            <div style="display:flex;gap:8px">
+                <select class="form-select" style="width:auto"><option>Все действия</option><option>Входы</option><option>Задания</option><option>Сессии</option><option>Безопасность</option></select>
+                <button class="btn btn-secondary btn-sm">Экспорт</button>
+            </div>
+        </div>
+        <div class="table-wrap"><table>
+            <tr><th>Время</th><th>Действие</th><th>Пользователь</th><th>Сущность</th><th>IP</th><th>Детали</th></tr>
+            <tr><td>12:34:56</td><td><span class="badge badge-green">session_submitted</span></td><td>Абдулла Н. (ученик)</td><td>session:abc123</td><td>192.168.1.45</td><td>Диагностика: Математика 9А</td></tr>
+            <tr><td>12:30:12</td><td><span class="badge badge-blue">question_status_changed</span></td><td>Козлова Е.В.</td><td>question:def456</td><td>10.0.0.12</td><td>draft → subject_review</td></tr>
+            <tr><td>12:25:00</td><td><span class="badge badge-red">login_failed</span></td><td>unknown</td><td>—</td><td>203.45.67.89</td><td>3 попытки за 5 мин</td></tr>
+        </table></div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SUPER ADMIN SCREENS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderSADashboard() {
+    return `
+    <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Классов</div><div class="stat-value">12</div></div>
+        <div class="stat-card"><div class="stat-label">Учеников</div><div class="stat-value">324</div></div>
+        <div class="stat-card"><div class="stat-label">Сотрудников</div><div class="stat-value">18</div></div>
+        <div class="stat-card"><div class="stat-label">Активных диагностик</div><div class="stat-value">4</div></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><div class="card-title">Назначенные диагностики</div></div>
+        <div class="table-wrap"><table>
+            <tr><th>Диагностика</th><th>Предмет</th><th>Классы</th><th>Дата</th><th>Статус</th></tr>
+            <tr><td>Диагностика №1 — Математика</td><td>Математика</td><td>9А, 9Б, 9В</td><td>15.01.2027</td><td><span class="badge badge-green">Активна</span></td></tr>
+            <tr><td>Диагностика №2 — Физика</td><td>Физика</td><td>9А, 9Б</td><td>20.01.2027</td><td><span class="badge badge-yellow">Запланирована</span></td></tr>
+        </table></div>
+    </div>`;
+}
+
+function renderSAOrgs() {
+    return `
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Карточка школы</div>
+            <button class="btn btn-secondary btn-sm">Редактировать</button>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><div class="form-label">Название</div><div style="font-weight:600">Гимназия №42</div></div>
+            <div class="form-group"><div class="form-label">БИН</div><div>123456789012</div></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><div class="form-label">Регион</div><div>г. Алматы</div></div>
+            <div class="form-group"><div class="form-label">Язык</div><div>Русский</div></div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Классы</div>
+            <button class="btn btn-primary btn-sm">+ Добавить класс</button>
+        </div>
+        <div class="table-wrap"><table>
+            <tr><th>Класс</th><th>Учеников</th><th>Классный руководитель</th><th>Действия</th></tr>
+            <tr><td>9 «А»</td><td>28</td><td>Иванова М.П.</td><td><button class="btn btn-secondary btn-sm">Ученики</button></td></tr>
+            <tr><td>9 «Б»</td><td>31</td><td>Смирнова О.К.</td><td><button class="btn btn-secondary btn-sm">Ученики</button></td></tr>
+            <tr><td>9 «В»</td><td>26</td><td>Кузнецова Т.Н.</td><td><button class="btn btn-secondary btn-sm">Ученики</button></td></tr>
+        </table></div>
+    </div>`;
+}
+
+function renderSAImport() {
+    return `
+    <div class="card">
+        <div class="card-header"><div class="card-title">Импорт данных</div></div>
+        <div class="tabs">
+            <div class="tab active">Ученики</div>
+            <div class="tab">Классы</div>
+            <div class="tab">Сотрудники</div>
+        </div>
+        <div class="form-group">
+            <div class="form-label">Загрузите Excel-файл (.xlsx)</div>
+            <div style="border:2px dashed var(--gray-300);border-radius:8px;padding:32px;text-align:center;color:var(--gray-500)">
+                📄 Перетащите файл сюда или нажмите для выбора<br>
+                <small>Шаблон: <a href="#" style="color:var(--primary)">скачать пример</a></small>
+            </div>
+        </div>
+        <div class="card" style="background:var(--gray-50)">
+            <div class="card-title" style="margin-bottom:12px">Предпросмотр импорта</div>
+            <div class="table-wrap"><table>
+                <tr><th>№</th><th>ФИО</th><th>Класс</th><th>Условный номер</th><th>Статус</th></tr>
+                <tr><td>1</td><td>Абдулла Нурлан Серикович</td><td>9А</td><td>001</td><td><span class="badge badge-green">OK</span></td></tr>
+                <tr><td>2</td><td>Беков Арман Даниярович</td><td>9А</td><td>002</td><td><span class="badge badge-green">OK</span></td></tr>
+                <tr><td>3</td><td></td><td>9Б</td><td>003</td><td><span class="badge badge-red">ФИО пустое</span></td></tr>
+            </table></div>
+            <div style="margin-top:12px;display:flex;gap:8px">
+                <button class="btn btn-primary">Импортировать (2 из 3)</button>
+                <button class="btn btn-secondary">Скачать протокол ошибок</button>
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderSAUsers() {
+    return `
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Пользователи школы</div>
+            <button class="btn btn-primary btn-sm">+ Пригласить</button>
+        </div>
+        <div class="table-wrap"><table>
+            <tr><th>Имя</th><th>Роль</th><th>Класс</th><th>Статус</th><th>Действия</th></tr>
+            <tr><td>Сидоров К.М.</td><td><span class="badge badge-yellow">Тест-админ</span></td><td>—</td><td><span class="badge badge-green">Активен</span></td><td><button class="btn btn-secondary btn-sm">✏️</button></td></tr>
+            <tr><td>Абдулла Н.С.</td><td><span class="badge badge-gray">Ученик</span></td><td>9А</td><td><span class="badge badge-green">Активен</span></td><td><button class="btn btn-secondary btn-sm">✏️</button></td></tr>
+            <tr><td>Беков А.Д.</td><td><span class="badge badge-gray">Ученик</span></td><td>9А</td><td><span class="badge badge-green">Активен</span></td><td><button class="btn btn-secondary btn-sm">✏️</button></td></tr>
+        </table></div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TEST ADMIN SCREENS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderTADashboard() {
+    return `
+    <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Активных сессий</div><div class="stat-value">28</div><div class="stat-change">9А — Математика</div></div>
+        <div class="stat-card"><div class="stat-label">Завершено сегодня</div><div class="stat-value">56</div></div>
+        <div class="stat-card"><div class="stat-label">Ожидают проверки</div><div class="stat-value">12</div><div class="stat-change down">Развёрнутые ответы</div></div>
+        <div class="stat-card"><div class="stat-label">Отчётов сгенерировано</div><div class="stat-value">3</div></div>
+    </div>`;
+}
+
+function renderTADiagnostics() {
+    return `
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Диагностики</div>
+            <button class="btn btn-primary btn-sm">+ Создать диагностику</button>
+        </div>
+        <div class="table-wrap"><table>
+            <tr><th>Название</th><th>Предмет</th><th>Blueprint</th><th>Вариантов</th><th>Время</th><th>Статус</th><th>Действия</th></tr>
+            <tr>
+                <td>Диагностика №1 — Математика</td><td>Математика</td><td><span class="badge badge-green">Утверждён</span></td>
+                <td>5</td><td>60 мин</td><td><span class="badge badge-green">Активна</span></td>
+                <td><button class="btn btn-secondary btn-sm">Сессии</button></td>
+            </tr>
+            <tr>
+                <td>Диагностика №2 — Физика</td><td>Физика</td><td><span class="badge badge-yellow">Черновик</span></td>
+                <td>—</td><td>45 мин</td><td><span class="badge badge-gray">Черновик</span></td>
+                <td><button class="btn btn-primary btn-sm">Настроить</button></td>
+            </tr>
+        </table></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><div class="card-title">Создание диагностики — шаг за шагом</div></div>
+        <div style="display:flex;gap:16px;margin-bottom:20px">
+            <div style="flex:1;padding:12px;background:var(--primary);color:white;border-radius:8px;text-align:center;font-size:13px;font-weight:600">1. Blueprint</div>
+            <div style="flex:1;padding:12px;background:var(--gray-200);border-radius:8px;text-align:center;font-size:13px">2. Настройки</div>
+            <div style="flex:1;padding:12px;background:var(--gray-200);border-radius:8px;text-align:center;font-size:13px">3. Назначение</div>
+            <div style="flex:1;padding:12px;background:var(--gray-200);border-radius:8px;text-align:center;font-size:13px">4. Генерация</div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><div class="form-label">Предмет</div><select class="form-select"><option>Математика</option></select></div>
+            <div class="form-group"><div class="form-label">Класс</div><select class="form-select"><option>9</option></select></div>
+        </div>
+        <div class="form-group"><div class="form-label">Blueprint-матрица</div>
+            <div class="table-wrap"><table class="matrix-table">
+                <tr><th>Раздел</th><th>Базовый</th><th>Средний</th><th>Высокий</th><th>Итого</th></tr>
+                <tr><td style="text-align:left">Алгебра</td><td><div class="matrix-cell filled">4</div></td><td><div class="matrix-cell filled">3</div></td><td><div class="matrix-cell filled">2</div></td><td><b>9</b></td></tr>
+                <tr><td style="text-align:left">Геометрия</td><td><div class="matrix-cell filled">3</div></td><td><div class="matrix-cell filled">2</div></td><td><div class="matrix-cell filled">1</div></td><td><b>6</b></td></tr>
+                <tr><td style="text-align:left">Вероятность</td><td><div class="matrix-cell filled">2</div></td><td><div class="matrix-cell filled">2</div></td><td><div class="matrix-cell empty">0</div></td><td><b>4</b></td></tr>
+                <tr style="font-weight:600"><td>Итого</td><td>9</td><td>7</td><td>3</td><td>19</td></tr>
+            </table></div>
+        </div>
+    </div>`;
+}
+
+function renderTASessions() {
+    return `
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Активные сессии — Диагностика №1</div>
+            <div style="display:flex;gap:8px">
+                <button class="btn btn-success btn-sm">Сгенерировать коды</button>
+                <button class="btn btn-secondary btn-sm">Экспорт</button>
+            </div>
+        </div>
+        <div class="table-wrap"><table>
+            <tr><th>Ученик</th><th>Класс</th><th>Код доступа</th><th>Начало</th><th>Осталось</th><th>Статус</th><th>Действия</th></tr>
+            <tr><td>Абдулла Н.</td><td>9А</td><td><code>A7X9K2</code></td><td>10:00</td><td>32 мин</td><td><span class="badge badge-green">Активна</span></td><td><button class="btn btn-secondary btn-sm">👁️</button></td></tr>
+            <tr><td>Беков А.</td><td>9А</td><td><code>B3M8P1</code></td><td>10:00</td><td>28 мин</td><td><span class="badge badge-green">Активна</span></td><td><button class="btn btn-secondary btn-sm">👁️</button></td></tr>
+            <tr><td>Волкова Д.</td><td>9Б</td><td><code>C5N2Q7</code></td><td>10:05</td><td>—</td><td><span class="badge badge-blue">Завершена</span></td><td><button class="btn btn-secondary btn-sm">👁️</button></td></tr>
+            <tr><td>Гусев Р.</td><td>9А</td><td><code>D1K4T6</code></td><td>—</td><td>—</td><td><span class="badge badge-gray">Ожидает</span></td><td><button class="btn btn-secondary btn-sm">Отправить код</button></td></tr>
+        </table></div>
+    </div>`;
+}
+
+function renderTAResults() {
+    return `
+    <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Средний балл</div><div class="stat-value">68%</div></div>
+        <div class="stat-card"><div class="stat-label">Медиана</div><div class="stat-value">72%</div></div>
+        <div class="stat-card"><div class="stat-label">Завершили</div><div class="stat-value">84/89</div></div>
+        <div class="stat-card"><div class="stat-label">Группа риска</div><div class="stat-value" style="color:var(--danger)">12</div></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><div class="card-title">Распределение по уровням</div></div>
+        <div class="level-bar"><div class="level-label">Высокий</div><div class="level-bar-track"><div class="level-bar-fill" style="width:25%;background:var(--success)">25%</div></div><div class="level-count">21</div></div>
+        <div class="level-bar"><div class="level-label">Средний</div><div class="level-bar-track"><div class="level-bar-fill" style="width:42%;background:var(--primary-light)">42%</div></div><div class="level-count">35</div></div>
+        <div class="level-bar"><div class="level-label">Базовый</div><div class="level-bar-track"><div class="level-bar-fill" style="width:19%;background:var(--warning)">19%</div></div><div class="level-count">16</div></div>
+        <div class="level-bar"><div class="level-label">Ниже базового</div><div class="level-bar-track"><div class="level-bar-fill" style="width:14%;background:var(--danger)">14%</div></div><div class="level-count">12</div></div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Результаты по ученикам</div>
+            <div style="display:flex;gap:8px">
+                <button class="btn btn-primary btn-sm">📄 PDF отчёт</button>
+                <button class="btn btn-secondary btn-sm">📊 Excel</button>
+            </div>
+        </div>
+        <div class="table-wrap"><table>
+            <tr><th>Ученик</th><th>Класс</th><th>Балл</th><th>%</th><th>Уровень</th><th>Действия</th></tr>
+            <tr><td>Абдулла Н.</td><td>9А</td><td>16/19</td><td>84%</td><td><span class="badge badge-green">Высокий</span></td><td><button class="btn btn-secondary btn-sm">Отчёт</button></td></tr>
+            <tr><td>Беков А.</td><td>9А</td><td>14/19</td><td>74%</td><td><span class="badge badge-blue">Средний</span></td><td><button class="btn btn-secondary btn-sm">Отчёт</button></td></tr>
+            <tr><td>Гусев Р.</td><td>9А</td><td>8/19</td><td>42%</td><td><span class="badge badge-red">Ниже базового</span></td><td><button class="btn btn-secondary btn-sm">Отчёт</button></td></tr>
+        </table></div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DEVELOPER SCREENS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderDevDashboard() {
+    return `
+    <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Моих заданий</div><div class="stat-value">47</div></div>
+        <div class="stat-card"><div class="stat-label">На экспертизе</div><div class="stat-value">8</div></div>
+        <div class="stat-card"><div class="stat-label">Утверждено</div><div class="stat-value">31</div></div>
+        <div class="stat-card"><div class="stat-label">Возвращено</div><div class="stat-value" style="color:var(--warning)">3</div></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><div class="card-title">Последние задания</div></div>
+        <div class="table-wrap"><table>
+            <tr><th>Текст</th><th>Предмет</th><th>Тип</th><th>Сложность</th><th>Статус</th><th>Действия</th></tr>
+            <tr><td>Решите уравнение: 2x + 5 = 13</td><td>Математика</td><td>Краткий ответ</td><td><span class="badge badge-green">Базовый</span></td><td><span class="badge badge-green">В банке</span></td><td><button class="btn btn-secondary btn-sm">👁️</button></td></tr>
+            <tr><td>Вычислите площадь треугольника...</td><td>Математика</td><td>Развёрнутый</td><td><span class="badge badge-yellow">Средний</span></td><td><span class="badge badge-blue">На проверке</span></td><td><button class="btn btn-secondary btn-sm">👁️</button></td></tr>
+            <tr><td>Определите силу тока в цепи...</td><td>Физика</td><td>Один ответ</td><td><span class="badge badge-red">Высокий</span></td><td><span class="badge badge-red">Возвращено</span></td><td><button class="btn btn-primary btn-sm">Исправить</button></td></tr>
+        </table></div>
+    </div>`;
+}
+
+function renderDevEditor() {
+    return `
+    <div class="card">
+        <div class="card-header"><div class="card-title">Редактор задания</div></div>
+        <div class="form-row">
+            <div class="form-group"><div class="form-label">Предмет</div><select class="form-select"><option>Математика — 9 класс</option></select></div>
+            <div class="form-group"><div class="form-label">Раздел</div><select class="form-select"><option>Алгебра</option><option>Геометрия</option></select></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><div class="form-label">Цель обучения</div><select class="form-select"><option>9.1.2.1 — Решение линейных уравнений</option></select></div>
+            <div class="form-group"><div class="form-label">Компетенция</div><select class="form-select"><option>Математическая грамотность</option></select></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><div class="form-label">Тип задания</div><select class="form-select"><option>Один ответ (A/B/C/D)</option><option>Несколько ответов</option><option>Краткий ответ</option><option>Развёрнутый ответ</option><option>Соответствие</option><option>Последовательность</option></select></div>
+            <div class="form-group"><div class="form-label">Когнитивный уровень</div><select class="form-select"><option>Понимание</option><option>Применение</option><option>Анализ</option></select></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><div class="form-label">Сложность</div><select class="form-select"><option>Базовая</option><option selected>Средняя</option><option>Высокая</option></select></div>
+            <div class="form-group"><div class="form-label">Язык</div><select class="form-select"><option>Русский</option><option>Казахский</option></select></div>
+        </div>
+        <div class="form-group">
+            <div class="form-label">Текст задания (RU)</div>
+            <textarea class="form-textarea" rows="3">Решите уравнение: $2x + 5 = 13$. Запишите значение $x$.</textarea>
+        </div>
+        <div class="form-group">
+            <div class="form-label">Текст задания (KZ)</div>
+            <textarea class="form-textarea" rows="3" placeholder="Қазақша нұсқасы..."></textarea>
+        </div>
+        <div class="form-group">
+            <div class="form-label">Варианты ответов</div>
+            <div class="option selected"><div class="option-marker">A</div><div><input class="form-input" value="3" style="width:200px"></div><span style="margin-left:8px;color:var(--success)">✓ Правильный</span></div>
+            <div class="option"><div class="option-marker">B</div><div><input class="form-input" value="4" style="width:200px"></div></div>
+            <div class="option"><div class="option-marker">C</div><div><input class="form-input" value="6" style="width:200px"></div></div>
+            <div class="option"><div class="option-marker">D</div><div><input class="form-input" value="9" style="width:200px"></div></div>
+        </div>
+        <div class="form-group">
+            <div class="form-label">Пояснение</div>
+            <textarea class="form-textarea" rows="2">2x + 5 = 13 → 2x = 8 → x = 4... Нет, x = (13-5)/2 = 4. Правильный ответ: x = 4. Но в вариантах 3 — это если забыли вычесть 5. Ответ A = 3 неверен, правильный B = 4.</textarea>
+        </div>
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-secondary">Сохранить черновик</button>
+            <button class="btn btn-primary">Отправить на экспертизу</button>
+        </div>
+    </div>`;
+}
+
+function renderDevBank() {
+    return `
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Банк заданий</div>
+            <div style="display:flex;gap:8px">
+                <select class="form-select" style="width:auto"><option>Все предметы</option><option>Математика</option><option>Физика</option></select>
+                <select class="form-select" style="width:auto"><option>Все статусы</option><option>В банке</option><option>На проверке</option></select>
+                <input class="form-input" placeholder="Поиск..." style="width:200px">
+            </div>
+        </div>
+        <div class="table-wrap"><table>
+            <tr><th>Текст</th><th>Предмет</th><th>Раздел</th><th>Уровень</th><th>Сложность</th><th>Статус</th><th>Версия</th></tr>
+            <tr><td>Решите уравнение: 2x + 5 = 13</td><td>Математика</td><td>Алгебра</td><td>Применение</td><td><span class="badge badge-green">Базовый</span></td><td><span class="badge badge-green">В банке</span></td><td>v1</td></tr>
+            <tr><td>Найдите производную функции f(x) = x² + 3x</td><td>Математика</td><td>Алгебра</td><td>Применение</td><td><span class="badge badge-yellow">Средний</span></td><td><span class="badge badge-green">В банке</span></td><td>v2</td></tr>
+            <tr><td>Определите силу Архимеда...</td><td>Физика</td><td>Механика</td><td>Анализ</td><td><span class="badge badge-red">Высокий</span></td><td><span class="badge badge-blue">Апробация</span></td><td>v1</td></tr>
+        </table></div>
+    </div>`;
+}
+
+function renderDevBlueprint() {
+    return `
+    <div class="card">
+        <div class="card-header"><div class="card-title">Blueprint — Математика, 9 класс</div></div>
+        <div class="table-wrap"><table class="matrix-table">
+            <tr><th rowspan="2">Раздел</th><th colspan="3">Когнитивный уровень</th><th rowspan="2">Итого</th></tr>
+            <tr><th>Знание</th><th>Применение</th><th>Анализ</th></tr>
+            <tr><td style="text-align:left;font-weight:600">Алгебра</td>
+                <td><div class="matrix-cell filled">3</div></td>
+                <td><div class="matrix-cell filled">4</div></td>
+                <td><div class="matrix-cell filled">2</div></td>
+                <td><b>9</b></td></tr>
+            <tr><td style="text-align:left;font-weight:600">Геометрия</td>
+                <td><div class="matrix-cell filled">2</div></td>
+                <td><div class="matrix-cell filled">3</div></td>
+                <td><div class="matrix-cell filled">1</div></td>
+                <td><b>6</b></td></tr>
+            <tr><td style="text-align:left;font-weight:600">Вероятность и статистика</td>
+                <td><div class="matrix-cell filled">2</div></td>
+                <td><div class="matrix-cell filled">1</div></td>
+                <td><div class="matrix-cell empty">0</div></td>
+                <td><b>3</b></td></tr>
+            <tr><td style="text-align:left;font-weight:600">Числа и вычисления</td>
+                <td><div class="matrix-cell filled">1</div></td>
+                <td><div class="matrix-cell empty">0</div></td>
+                <td><div class="matrix-cell empty">0</div></td>
+                <td><b>1</b></td></tr>
+            <tr style="font-weight:700;background:var(--gray-50)"><td>ИТОГО</td><td>8</td><td>8</td><td>3</td><td>19</td></tr>
+        </table></div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VERIFIER SCREENS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderVerDashboard() {
+    return `
+    <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">В очереди</div><div class="stat-value" style="color:var(--warning)">12</div></div>
+        <div class="stat-card"><div class="stat-label">Проверено сегодня</div><div class="stat-value">8</div></div>
+        <div class="stat-card"><div class="stat-label">Утверждено</div><div class="stat-value">6</div></div>
+        <div class="stat-card"><div class="stat-label">Возвращено</div><div class="stat-value" style="color:var(--danger)">2</div></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><div class="card-title">Очередь экспертизы</div></div>
+        <div class="table-wrap"><table>
+            <tr><th>Задание</th><th>Автор</th><th>Предмет</th><th>Тип проверки</th><th>Приоритет</th><th>Действия</th></tr>
+            <tr><td>Решите уравнение: 3x - 7 = 14</td><td>Козлова Е.В.</td><td>Математика</td><td><span class="badge badge-blue">Предметная</span></td><td><span class="badge badge-red">Высокий</span></td><td><button class="btn btn-primary btn-sm">Проверить</button></td></tr>
+            <tr><td>Определите тип реакции...</td><td>Нурланов С.А.</td><td>Физика</td><td><span class="badge badge-purple">Методическая</span></td><td><span class="badge badge-yellow">Средний</span></td><td><button class="btn btn-primary btn-sm">Проверить</button></td></tr>
+        </table></div>
+    </div>`;
+}
+
+function renderVerReview() {
+    return `
+    <div class="card">
+        <div class="card-header"><div class="card-title">Экспертиза задания</div></div>
+        <div style="background:var(--gray-50);border-radius:8px;padding:16px;margin-bottom:16px">
+            <div style="font-size:12px;color:var(--gray-500);margin-bottom:4px">ЗАДАНИЕ</div>
+            <div style="font-size:15px;line-height:1.6">Решите уравнение: $3x - 7 = 14$. Запишите значение $x$.</div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><div class="form-label">Предмет</div><div>Математика — 9 класс</div></div>
+            <div class="form-group"><div class="form-label">Раздел</div><div>Алгебра</div></div>
+        </div>
+        <div class="form-row">
+            <div class="form-group"><div class="form-label">Цель обучения</div><div>9.1.2.1 — Решение линейных уравнений</div></div>
+            <div class="form-group"><div class="form-label">Когнитивный уровень</div><div>Применение</div></div>
+        </div>
+        <div class="form-group">
+            <div class="form-label">Варианты ответов</div>
+            <div class="option selected"><div class="option-marker">A</div><div>5</div><span style="margin-left:8px;color:var(--success)">✓ Правильный</span></div>
+            <div class="option"><div class="option-marker">B</div><div>7</div></div>
+            <div class="option"><div class="option-marker">C</div><div>3</div></div>
+            <div class="option"><div class="option-marker">D</div><div>21</div></div>
+        </div>
+        <hr style="margin:16px 0;border:none;border-top:1px solid var(--gray-200)">
+        <div class="form-group">
+            <div class="form-label">Комментарий эксперта</div>
+            <textarea class="form-textarea" rows="3" placeholder="Замечания, рекомендации..."></textarea>
+        </div>
+        <div class="form-group">
+            <div class="form-label">Проверка по критериям</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+                <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" checked> Текст задания корректен</label>
+                <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" checked> Правильный ответ верен</label>
+                <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" checked> Соответствует цели обучения</label>
+                <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" checked> Соответствует уровню сложности</label>
+                <label style="display:flex;align-items:center;gap:8px"><input type="checkbox"> Нет двусмысленности</label>
+                <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" checked> Формулы корректны</label>
+            </div>
+        </div>
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-success">✅ Утвердить</button>
+            <button class="btn btn-danger">↩️ Вернуть на доработку</button>
+        </div>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STUDENT SCREENS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderStuDashboard() {
+    return `
+    <div class="stats-grid">
+        <div class="stat-card"><div class="stat-label">Диагностик пройдено</div><div class="stat-value">3</div></div>
+        <div class="stat-card"><div class="stat-label">Средний балл</div><div class="stat-value">74%</div></div>
+        <div class="stat-card"><div class="stat-label">Следующая диагностика</div><div class="stat-value" style="font-size:18px">20.01.2027</div><div class="stat-change">Физика</div></div>
+    </div>
+    <div class="card">
+        <div class="card-header"><div class="card-title">Мои диагностики</div></div>
+        <div class="table-wrap"><table>
+            <tr><th>Диагностика</th><th>Предмет</th><th>Дата</th><th>Балл</th><th>Уровень</th><th>Статус</th></tr>
+            <tr><td>Диагностика №1</td><td>Математика</td><td>15.01.2027</td><td>84%</td><td><span class="badge badge-green">Высокий</span></td><td><span class="badge badge-green">Завершена</span></td></tr>
+            <tr><td>Диагностика №2</td><td>Казахский язык</td><td>18.01.2027</td><td>68%</td><td><span class="badge badge-blue">Средний</span></td><td><span class="badge badge-green">Завершена</span></td></tr>
+            <tr><td>Диагностика №3</td><td>Физика</td><td>20.01.2027</td><td>—</td><td>—</td><td><span class="badge badge-yellow">Ожидает</span></td></tr>
+        </table></div>
+    </div>`;
+}
+
+function renderStuTest() {
+    return `
+    <div style="display:flex;gap:24px">
+        <div style="flex:1">
+            <div class="card" style="margin-bottom:16px">
+                <div style="display:flex;justify-content:space-between;align-items:center">
+                    <div>
+                        <div style="font-size:12px;color:var(--gray-500)">ДИАГНОСТИКА №3 — ФИЗИКА</div>
+                        <div style="font-size:18px;font-weight:600">Вариант Б-3</div>
+                    </div>
+                    <div class="timer" id="timer">42:17</div>
+                </div>
+                <div style="margin-top:8px">
+                    <div class="progress-bar"><div class="progress-fill blue" style="width:35%"></div></div>
+                    <div style="font-size:12px;color:var(--gray-500);margin-top:4px">7 из 19 заданий отвечено</div>
+                </div>
+            </div>
+
+            <div class="question-card active">
+                <div class="question-number">Задание 8 из 19 • Средняя сложность • Применение</div>
+                <div class="question-text">
+                    Тело массой 2 кг движется с ускорением 3 м/с². Определите силу, действующую на тело.
+                    Используйте второй закон Ньютона: $F = ma$.
+                </div>
+                <div class="option" onclick="this.classList.toggle('selected')">
+                    <div class="option-marker">A</div><div>4 Н</div>
+                </div>
+                <div class="option selected" onclick="this.classList.toggle('selected')">
+                    <div class="option-marker">B</div><div>6 Н</div>
+                </div>
+                <div class="option" onclick="this.classList.toggle('selected')">
+                    <div class="option-marker">C</div><div>5 Н</div>
+                </div>
+                <div class="option" onclick="this.classList.toggle('selected')">
+                    <div class="option-marker">D</div><div>1.5 Н</div>
+                </div>
+            </div>
+
+            <div style="display:flex;justify-content:space-between">
+                <button class="btn btn-secondary">← Предыдущее</button>
+                <button class="btn btn-primary">Следующее →</button>
+            </div>
+        </div>
+
+        <div style="width:200px">
+            <div class="card">
+                <div class="card-title" style="margin-bottom:12px">Карта ответов</div>
+                <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px">
+                    ${Array.from({length: 19}, (_, i) => {
+                        const n = i + 1;
+                        const answered = n <= 7;
+                        const current = n === 8;
+                        return `<div style="width:36px;height:36px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;cursor:pointer;
+                            ${current ? 'background:var(--primary);color:white' : answered ? 'background:#d1fae5;color:#065f46' : 'background:var(--gray-100);color:var(--gray-500)'}">${n}</div>`;
+                    }).join('')}
+                </div>
+                <div style="margin-top:12px;font-size:11px;color:var(--gray-500)">
+                    <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px"><div style="width:12px;height:12px;background:var(--primary);border-radius:3px"></div> Текущее</div>
+                    <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px"><div style="width:12px;height:12px;background:#d1fae5;border-radius:3px"></div> Отвечено</div>
+                    <div style="display:flex;align-items:center;gap:4px"><div style="width:12px;height:12px;background:var(--gray-100);border-radius:3px"></div> Не отвечено</div>
+                </div>
+                <button class="btn btn-danger btn-sm" style="width:100%;margin-top:12px">Завершить</button>
+            </div>
+        </div>
+    </div>`;
+}
+
+function renderStuResult() {
+    return `
+    <div class="card" style="max-width:700px;margin:0 auto">
+        <div class="card-header"><div class="card-title">Результат — Диагностика №1, Математика</div></div>
+        <div style="text-align:center;margin-bottom:24px">
+            <div style="font-size:48px;font-weight:700;color:var(--success)">84%</div>
+            <div style="font-size:18px;color:var(--gray-500)">16 из 19 баллов</div>
+            <div style="margin-top:8px"><span class="badge badge-green" style="font-size:14px;padding:4px 16px">Высокий уровень</span></div>
+        </div>
+
+        <div style="margin-bottom:24px">
+            <div class="card-title" style="margin-bottom:12px">По разделам</div>
+            <div class="level-bar"><div class="level-label">Алгебра</div><div class="level-bar-track"><div class="level-bar-fill" style="width:89%;background:var(--success)">89%</div></div></div>
+            <div class="level-bar"><div class="level-label">Геометрия</div><div class="level-bar-track"><div class="level-bar-fill" style="width:67%;background:var(--primary-light)">67%</div></div></div>
+            <div class="level-bar"><div class="level-label">Вероятность</div><div class="level-bar-track"><div class="level-bar-fill" style="width:100%;background:var(--success)">100%</div></div></div>
+        </div>
+
+        <div style="margin-bottom:24px">
+            <div class="card-title" style="margin-bottom:12px">Сильные стороны</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px">
+                <span class="badge badge-green">Линейные уравнения</span>
+                <span class="badge badge-green">Вероятность событий</span>
+                <span class="badge badge-green">Статистика</span>
+            </div>
+        </div>
+
+        <div style="margin-bottom:24px">
+            <div class="card-title" style="margin-bottom:12px">Дефициты и рекомендации</div>
+            <div style="background:#fef3c7;border-radius:8px;padding:12px;margin-bottom:8px">
+                <div style="font-weight:600;color:#92400e">📐 Геометрия — Площади фигур</div>
+                <div style="font-size:13px;color:#78350f;margin-top:4px">Рекомендуется повторить формулы площадей треугольника и параллелограмма. Практика: задачи 45–62 из учебника.</div>
+            </div>
+        </div>
+
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-primary">📄 Скачать PDF отчёт</button>
+            <button class="btn btn-secondary">🏅 Сертификат</button>
+        </div>
+    </div>`;
+}
+
+function renderStuCertificate() {
+    return `
+    <div class="cert-preview">
+        <div class="cert-title">Сертификат</div>
+        <div style="font-size:13px;color:var(--gray-500)">Национальная платформа оценки «BAGALAU»</div>
+        <div class="cert-name">Абдулла Нурлан Серикович</div>
+        <div class="cert-details">
+            Успешно прошёл диагностику<br>
+            <strong>Математика — 9 класс</strong><br>
+            15 января 2027 года
+        </div>
+        <div style="margin:16px 0">
+            <span class="badge badge-green" style="font-size:16px;padding:6px 20px">84% — Высокий уровень</span>
+        </div>
+        <div class="cert-qr">
+            <div class="cert-qr-placeholder">QR код</div>
+            <div style="font-size:11px;color:var(--gray-400);margin-top:4px">Проверка: bagalau.kz/verify/a7x9k2</div>
+        </div>
+    </div>
+    <div style="text-align:center;margin-top:16px">
+        <button class="btn btn-primary">📄 Скачать PDF</button>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════════════════
+
+renderRoleSwitcher();
+renderSidebar();
+renderScreen();
+</script>
+</body>
+</html>
