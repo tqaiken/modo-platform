@@ -1,7 +1,7 @@
 import {
-  createElement,
   useCallback,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import {
@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Download,
   FileQuestion,
   Library,
   MessageSquare,
@@ -203,11 +204,69 @@ function getErrorMessage(
       .join("; ");
   }
 
+  if (
+    typeof detail === "object" &&
+    detail !== null &&
+    "message" in detail
+  ) {
+    return String(
+      (detail as { message: unknown })
+        .message
+    );
+  }
+
   if (error instanceof Error) {
     return error.message;
   }
 
   return fallback;
+}
+
+
+function getDownloadFilename(
+  contentDisposition: string | undefined
+): string {
+  if (!contentDisposition) {
+    return (
+      `modo_variants_${
+        new Date()
+          .toISOString()
+          .slice(0, 10)
+      }.zip`
+    );
+  }
+
+  const utf8Match =
+    contentDisposition.match(
+      /filename\*=UTF-8''([^;]+)/i
+    );
+
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(
+        utf8Match[1]
+      );
+    } catch {
+      return utf8Match[1];
+    }
+  }
+
+  const filenameMatch =
+    contentDisposition.match(
+      /filename="?([^";]+)"?/i
+    );
+
+  if (filenameMatch?.[1]) {
+    return filenameMatch[1];
+  }
+
+  return (
+    `modo_variants_${
+      new Date()
+        .toISOString()
+        .slice(0, 10)
+    }.zip`
+  );
 }
 
 
@@ -251,6 +310,13 @@ export default function CuratorPage() {
     setCuratorComment,
   ] = useState("");
 
+  const [
+    selectedVariantIds,
+    setSelectedVariantIds,
+  ] = useState<Set<number>>(
+    new Set()
+  );
+
   const [search, setSearch] =
     useState("");
 
@@ -262,6 +328,34 @@ export default function CuratorPage() {
 
   const [loading, setLoading] =
     useState(true);
+
+  const [exporting, setExporting] =
+    useState(false);
+
+
+  const visibleVariantIds = useMemo(
+    () =>
+      variants.map(
+        (variant) => variant.id
+      ),
+    [variants]
+  );
+
+
+  const allVisibleSelected = useMemo(
+    () =>
+      visibleVariantIds.length > 0 &&
+      visibleVariantIds.every(
+        (variantId) =>
+          selectedVariantIds.has(
+            variantId
+          )
+      ),
+    [
+      visibleVariantIds,
+      selectedVariantIds,
+    ]
+  );
 
 
   const loadVariants = useCallback(
@@ -286,7 +380,8 @@ export default function CuratorPage() {
                 page,
                 page_size: PAGE_SIZE,
                 search:
-                  search.trim() || undefined,
+                  search.trim() ||
+                  undefined,
               },
             }
           ),
@@ -391,56 +486,53 @@ export default function CuratorPage() {
   };
 
 
-  const loadVariantQuestions = async (
-    variantId: number
-  ): Promise<void> => {
-    if (
-      questionsByVariant[variantId] !==
-      undefined
-    ) {
-      return;
-    }
+const loadVariantQuestions = async (
+  variantId: number
+): Promise<void> => {
+  if (
+    questionsByVariant[variantId] !==
+    undefined
+  ) {
+    return;
+  }
 
-    setLoadingVariantId(
-      variantId
+  setLoadingVariantId(variantId);
+
+  try {
+    const response =
+      await api.get<VariantQuestionList>(
+        `/api/v1/variants/${variantId}/curator-questions`
+      );
+
+    setQuestionsByVariant((current) => {
+      const next = {
+        ...current,
+      };
+
+      next[variantId] =
+        response.data.items;
+
+      return next;
+    });
+  } catch (error: unknown) {
+    toast.error(
+      getErrorMessage(
+        error,
+        "Не удалось загрузить вопросы варианта."
+      )
     );
-
-    try {
-      const response =
-        await api.get<VariantQuestionList>(
-          `/api/v1/variants/${variantId}/curator-questions`
-        );
-
-      setQuestionsByVariant(
-        (current) => {
-          const next = {
-            ...current,
-          };
-
-          next[variantId] =
-            response.data.items;
-
-          return next;
-        }
-      );
-    } catch (error: unknown) {
-      toast.error(
-        getErrorMessage(
-          error,
-          "Не удалось загрузить вопросы варианта."
-        )
-      );
-    } finally {
-      setLoadingVariantId(null);
-    }
-  };
+  } finally {
+    setLoadingVariantId(null);
+  }
+};
 
 
   const toggleVariant = async (
     variantId: number
   ): Promise<void> => {
     if (
-      expandedVariantId === variantId
+      expandedVariantId ===
+      variantId
     ) {
       setExpandedVariantId(null);
       setCuratorComment("");
@@ -541,6 +633,136 @@ export default function CuratorPage() {
   };
 
 
+  const toggleVariantSelection = (
+    variantId: number
+  ): void => {
+    setSelectedVariantIds(
+      (current) => {
+        const next = new Set(
+          current
+        );
+
+        if (next.has(variantId)) {
+          next.delete(variantId);
+        } else {
+          next.add(variantId);
+        }
+
+        return next;
+      }
+    );
+  };
+
+
+  const toggleAllVisibleVariants =
+    (): void => {
+      setSelectedVariantIds(
+        (current) => {
+          const next = new Set(
+            current
+          );
+
+          if (allVisibleSelected) {
+            visibleVariantIds.forEach(
+              (variantId) => {
+                next.delete(variantId);
+              }
+            );
+          } else {
+            visibleVariantIds.forEach(
+              (variantId) => {
+                next.add(variantId);
+              }
+            );
+          }
+
+          return next;
+        }
+      );
+    };
+
+
+  const handleExportVariants =
+    async (): Promise<void> => {
+      const variantIds = Array.from(
+        selectedVariantIds
+      );
+
+      if (variantIds.length === 0) {
+        toast.error(
+          "Выберите варианты для экспорта."
+        );
+        return;
+      }
+
+      setExporting(true);
+
+      try {
+        const response = await api.post(
+          "/api/v1/export/variants/zip",
+          {
+            variant_ids: variantIds,
+          },
+          {
+            responseType: "blob",
+          }
+        );
+
+        const blob =
+          response.data instanceof Blob
+            ? response.data
+            : new Blob(
+                [response.data],
+                {
+                  type:
+                    "application/zip",
+                }
+              );
+
+        const downloadUrl =
+          window.URL.createObjectURL(
+            blob
+          );
+
+        const link =
+          document.createElement("a");
+
+        link.href = downloadUrl;
+
+        link.download =
+          getDownloadFilename(
+            response.headers[
+              "content-disposition"
+            ]
+          );
+
+        document.body.appendChild(
+          link
+        );
+
+        link.click();
+        link.remove();
+
+        window.URL.revokeObjectURL(
+          downloadUrl
+        );
+
+        toast.success(
+          `Экспортировано вариантов: ${variantIds.length}`
+        );
+      } catch (error: unknown) {
+        toast.error(
+          getErrorMessage(
+            error,
+            "Не удалось экспортировать варианты."
+          )
+        );
+      } finally {
+        setExporting(false);
+      }
+    };
+
+
   const changeTab = (
     nextTab: CuratorTab
   ): void => {
@@ -554,6 +776,18 @@ export default function CuratorPage() {
     setExpandedVariantId(null);
     setCuratorComment("");
     setQuestionsByVariant({});
+    setSelectedVariantIds(
+      new Set()
+    );
+  };
+
+
+  const changePage = (
+    nextPage: number
+  ): void => {
+    setExpandedVariantId(null);
+    setCuratorComment("");
+    setPage(nextPage);
   };
 
 
@@ -662,6 +896,9 @@ export default function CuratorPage() {
               setPage(1);
               setExpandedVariantId(null);
               setCuratorComment("");
+              setSelectedVariantIds(
+                new Set()
+              );
             }}
             className="input-field pl-10"
             placeholder="Поиск по названию варианта"
@@ -670,16 +907,71 @@ export default function CuratorPage() {
       </div>
 
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-gray-900">
-          {activeTab === "queue"
-            ? "Очередь куратора"
-            : "Опубликованные варианты"}
-        </h2>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">
+            {activeTab === "queue"
+              ? "Очередь куратора"
+              : "Опубликованные варианты"}
+          </h2>
 
-        <span className="text-sm text-gray-500">
-          Всего: {total}
-        </span>
+          <p className="mt-1 text-sm text-gray-500">
+            Всего: {total}
+          </p>
+        </div>
+
+        {activeTab === "bank" && (
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                checked={
+                  allVisibleSelected
+                }
+                onChange={
+                  toggleAllVisibleVariants
+                }
+                disabled={
+                  loading ||
+                  variants.length === 0
+                }
+                className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+              />
+
+              Выбрать страницу
+            </label>
+
+            <button
+              type="button"
+              onClick={() => {
+                void handleExportVariants();
+              }}
+              disabled={
+                exporting ||
+                selectedVariantIds.size ===
+                  0
+              }
+              className="btn-primary"
+            >
+              {exporting ? (
+                <>
+                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Формирование ZIP...
+                </>
+              ) : (
+                <>
+                  <Download className="h-4 w-4" />
+
+                  Экспорт ZIP (
+                  {
+                    selectedVariantIds.size
+                  }
+                  )
+                </>
+              )}
+            </button>
+          </div>
+        )}
       </div>
 
 
@@ -714,6 +1006,11 @@ export default function CuratorPage() {
               expandedVariantId ===
               variant.id;
 
+            const isSelected =
+              selectedVariantIds.has(
+                variant.id
+              );
+
             const questions =
               questionsByVariant[
                 variant.id
@@ -730,8 +1027,44 @@ export default function CuratorPage() {
             return (
               <article
                 key={variant.id}
-                className="card overflow-hidden"
+                className={`card overflow-hidden ${
+                  isSelected
+                    ? "ring-2 ring-primary-200"
+                    : ""
+                }`}
               >
+                {activeTab === "bank" && (
+                  <div className="mb-4 flex items-center gap-3 border-b border-gray-100 pb-4">
+                    <input
+                      type="checkbox"
+                      checked={
+                        isSelected
+                      }
+                      onChange={() => {
+                        toggleVariantSelection(
+                          variant.id
+                        );
+                      }}
+                      className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      aria-label={
+                        `Выбрать вариант ${variant.title}`
+                      }
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        toggleVariantSelection(
+                          variant.id
+                        );
+                      }}
+                      className="text-sm font-medium text-gray-700 hover:text-primary-700"
+                    >
+                      Выбрать для экспорта
+                    </button>
+                  </div>
+                )}
+
                 <button
                   type="button"
                   onClick={() => {
@@ -768,7 +1101,9 @@ export default function CuratorPage() {
 
                     {variant.description && (
                       <p className="mt-1 line-clamp-2 text-sm text-gray-600">
-                        {variant.description}
+                        {
+                          variant.description
+                        }
                       </p>
                     )}
 
@@ -785,12 +1120,16 @@ export default function CuratorPage() {
                         <FileQuestion className="h-3.5 w-3.5" />
 
                         Вопросов:{" "}
-                        {variant.question_count}
+                        {
+                          variant.question_count
+                        }
                       </span>
 
                       <span>
                         Разработчик:{" "}
-                        {variant.developer_name}
+                        {
+                          variant.developer_name
+                        }
                       </span>
 
                       {variant.approved_at && (
@@ -842,13 +1181,17 @@ export default function CuratorPage() {
                         </p>
 
                         <p className="mt-2 whitespace-pre-wrap text-sm text-green-900">
-                          {variant.review_comment}
+                          {
+                            variant.review_comment
+                          }
                         </p>
 
                         {variant.reviewer_name && (
                           <p className="mt-2 text-xs text-green-700">
                             Верификатор:{" "}
-                            {variant.reviewer_name}
+                            {
+                              variant.reviewer_name
+                            }
                           </p>
                         )}
                       </div>
@@ -859,7 +1202,8 @@ export default function CuratorPage() {
                       <div className="flex h-40 items-center justify-center">
                         <div className="h-7 w-7 animate-spin rounded-full border-4 border-primary-600 border-t-transparent" />
                       </div>
-                    ) : questions.length === 0 ? (
+                    ) : questions.length ===
+                      0 ? (
                       <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                         В варианте не найдены вопросы.
                       </div>
@@ -868,8 +1212,12 @@ export default function CuratorPage() {
                         {questions.map(
                           (question) => (
                             <CuratorQuestionCard
-                              key={question.id}
-                              question={question}
+                              key={
+                                question.id
+                              }
+                              question={
+                                question
+                              }
                               objectiveLabel={
                                 getObjectiveLabel(
                                   question
@@ -883,7 +1231,8 @@ export default function CuratorPage() {
                     )}
 
 
-                    {activeTab === "queue" && (
+                    {activeTab ===
+                      "queue" && (
                       <div className="mt-8 rounded-xl border border-gray-200 bg-gray-50 p-5">
                         <div className="mb-3 flex items-center gap-2">
                           <MessageSquare className="h-4 w-4 text-gray-500" />
@@ -894,22 +1243,32 @@ export default function CuratorPage() {
                         </div>
 
                         <textarea
-                          value={curatorComment}
-                          onChange={(event) => {
+                          value={
+                            curatorComment
+                          }
+                          onChange={(
+                            event
+                          ) => {
                             setCuratorComment(
-                              event.target.value
+                              event.target
+                                .value
                             );
                           }}
                           className="input-field min-h-32 resize-y"
                           placeholder="Укажите комментарий к добавлению варианта в банк..."
                           minLength={1}
                           maxLength={5000}
-                          disabled={publishing}
+                          disabled={
+                            publishing
+                          }
                           required
                         />
 
                         <p className="mt-1 text-right text-xs text-gray-400">
-                          {curatorComment.length} / 5000
+                          {
+                            curatorComment.length
+                          }{" "}
+                          / 5000
                         </p>
 
                         <button
@@ -922,7 +1281,8 @@ export default function CuratorPage() {
                           disabled={
                             publishing ||
                             questionsLoading ||
-                            questions.length === 0 ||
+                            questions.length ===
+                              0 ||
                             !curatorComment.trim()
                           }
                           className="btn-primary mt-4"
@@ -935,15 +1295,17 @@ export default function CuratorPage() {
                         </button>
 
                         <p className="mt-3 text-xs text-gray-500">
-                          В банк будет добавлен весь вариант
-                          со всеми вопросами, формулами
-                          и изображениями.
+                          В банк будет добавлен
+                          весь вариант со всеми
+                          вопросами, формулами и
+                          изображениями.
                         </p>
                       </div>
                     )}
 
 
-                    {activeTab === "bank" &&
+                    {activeTab ===
+                      "bank" &&
                       variant.curator_comment && (
                         <div className="mt-6 rounded-xl border border-purple-200 bg-purple-50 p-4">
                           <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">
@@ -951,7 +1313,9 @@ export default function CuratorPage() {
                           </p>
 
                           <p className="mt-2 whitespace-pre-wrap text-sm text-purple-900">
-                            {variant.curator_comment}
+                            {
+                              variant.curator_comment
+                            }
                           </p>
                         </div>
                       )}
@@ -969,13 +1333,10 @@ export default function CuratorPage() {
           <button
             type="button"
             onClick={() => {
-              setExpandedVariantId(null);
-              setCuratorComment("");
-
-              setPage((current) =>
+              changePage(
                 Math.max(
                   1,
-                  current - 1
+                  page - 1
                 )
               );
             }}
@@ -986,19 +1347,17 @@ export default function CuratorPage() {
           </button>
 
           <span className="text-sm text-gray-500">
-            Страница {page} из {totalPages}
+            Страница {page} из{" "}
+            {totalPages}
           </span>
 
           <button
             type="button"
             onClick={() => {
-              setExpandedVariantId(null);
-              setCuratorComment("");
-
-              setPage((current) =>
+              changePage(
                 Math.min(
                   totalPages,
-                  current + 1
+                  page + 1
                 )
               );
             }}
@@ -1040,7 +1399,8 @@ function CuratorQuestionCard({
 
           <div>
             <h4 className="font-semibold text-gray-900">
-              Вопрос №{question.order_number}
+              Вопрос №
+              {question.order_number}
             </h4>
 
             <p className="text-xs text-gray-500">
@@ -1071,12 +1431,16 @@ function CuratorQuestionCard({
           <div className="grid gap-4 xl:grid-cols-2">
             <MarkdownBlock
               label="Қазақша"
-              value={question.resource_kz}
+              value={
+                question.resource_kz
+              }
             />
 
             <MarkdownBlock
               label="Русский"
-              value={question.resource_ru}
+              value={
+                question.resource_ru
+              }
             />
           </div>
         </div>
@@ -1091,12 +1455,16 @@ function CuratorQuestionCard({
         <div className="grid gap-4 xl:grid-cols-2">
           <MarkdownBlock
             label="Қазақша"
-            value={question.question_text_kz}
+            value={
+              question.question_text_kz
+            }
           />
 
           <MarkdownBlock
             label="Русский"
-            value={question.question_text_ru}
+            value={
+              question.question_text_ru
+            }
           />
         </div>
       </div>
@@ -1144,13 +1512,17 @@ function CuratorQuestionCard({
                 <div className="grid gap-3 xl:grid-cols-2">
                   <MarkdownBlock
                     label="KZ"
-                    value={option.text_kz}
+                    value={
+                      option.text_kz
+                    }
                     compact
                   />
 
                   <MarkdownBlock
                     label="RU"
-                    value={option.text_ru}
+                    value={
+                      option.text_ru
+                    }
                     compact
                   />
                 </div>
@@ -1171,19 +1543,24 @@ function CuratorQuestionCard({
           <div className="grid gap-4 xl:grid-cols-2">
             <MarkdownBlock
               label="Қазақша"
-              value={question.explanation_kz}
+              value={
+                question.explanation_kz
+              }
             />
 
             <MarkdownBlock
               label="Русский"
-              value={question.explanation_ru}
+              value={
+                question.explanation_ru
+              }
             />
           </div>
         </div>
       )}
 
 
-      {question.media_files.length > 0 && (
+      {question.media_files.length >
+        0 && (
         <div className="mt-5">
           <h5 className="mb-3 text-sm font-semibold text-gray-800">
             Изображения
@@ -1194,23 +1571,30 @@ function CuratorQuestionCard({
               (media) => (
                 <a
                   key={media.id}
-                  href={media.public_url}
+                  href={
+                    media.public_url
+                  }
                   target="_blank"
                   rel="noopener noreferrer"
                   className="overflow-hidden rounded-xl border border-gray-200 bg-gray-50 hover:border-primary-300"
                 >
                   <div className="flex h-44 items-center justify-center p-3">
-                    {createElement("img", {
-                      src: media.public_url,
-                      alt:
-                        media.original_filename,
-                      className:
-                        "max-h-full max-w-full object-contain",
-                    })}
+                    <img
+                      src={
+                        media.public_url
+                      }
+                      alt={
+                        media.original_filename
+                      }
+                      className="max-h-full max-w-full object-contain"
+                      loading="lazy"
+                    />
                   </div>
 
                   <p className="truncate border-t border-gray-200 bg-white px-3 py-2 text-xs text-gray-500">
-                    {media.original_filename}
+                    {
+                      media.original_filename
+                    }
                   </p>
                 </a>
               )
