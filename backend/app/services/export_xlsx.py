@@ -11,7 +11,7 @@ Supported exports:
 """
 
 import io
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from openpyxl import Workbook
@@ -90,13 +90,30 @@ def safe_excel_value(
     value: Any,
 ) -> Any:
     """
-    Нормализует значение перед записью в Excel.
+    Подготавливает значение для записи в Excel.
 
-    Защищает текстовые поля от интерпретации
-    пользовательского содержимого как формулы Excel.
+    Excel не поддерживает datetime с часовым поясом.
+    Поэтому timezone-aware datetime преобразуется
+    в UTC, после чего информация о часовом поясе
+    удаляется.
+
+    Строки, похожие на формулы Excel,
+    экранируются одинарной кавычкой.
     """
     if value is None:
         return ""
+
+    if isinstance(value, datetime):
+        if value.tzinfo is not None:
+            value = value.astimezone(
+                timezone.utc
+            )
+
+            value = value.replace(
+                tzinfo=None
+            )
+
+        return value
 
     if isinstance(
         value,
@@ -104,13 +121,18 @@ def safe_excel_value(
             int,
             float,
             bool,
-            datetime,
         ),
     ):
         return value
 
-    if hasattr(value, "value"):
-        value = value.value
+    enum_value = getattr(
+        value,
+        "value",
+        None,
+    )
+
+    if enum_value is not None:
+        value = enum_value
 
     text = str(value)
 
