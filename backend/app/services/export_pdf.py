@@ -1,52 +1,24 @@
 """
-PDF export services.
+PDF export via WeasyPrint (HTML → PDF).
 
-Supported exports:
-
-1. generate_test_bank_pdf(questions)
-   Legacy export of individual questions.
-
-2. generate_variants_test_bank_pdf(variants)
-   Export of complete bilingual variants.
-
-The PDF embeds a Unicode TrueType font to support:
-- Cyrillic;
-- Kazakh characters;
-- mathematical symbols;
-- bilingual question content.
+LaTeX formulas are rendered as PNG images via matplotlib.
+Logo is loaded from the web and embedded as a data URI.
 """
 
+import base64
 import html
 import io
 import logging
 import re
-from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any
 
-from reportlab.lib import colors
-from reportlab.lib.enums import (
-    TA_CENTER,
-    TA_LEFT,
-)
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import (
-    ParagraphStyle,
-    getSampleStyleSheet,
-)
-from reportlab.lib.units import mm
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import (
-    HRFlowable,
-    Image,
-    KeepTogether,
-    PageBreak,
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
+import httpx
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from jinja2 import BaseLoader, Environment
+from weasyprint import HTML
 
 from app.services.r2 import (
     create_s3_client,
@@ -54,1521 +26,720 @@ from app.services.r2 import (
     normalize_r2_key,
 )
 
-
 logger = logging.getLogger(__name__)
 
-
-FONT_REGULAR_NAME = "MODOUnicode"
-FONT_BOLD_NAME = "MODOUnicodeBold"
+LOGO_URL = "https://modo2026.vercel.app/logo.png"
 
 
-FONT_CANDIDATES = [
-    (
-        Path("C:/Windows/Fonts/arial.ttf"),
-        Path("C:/Windows/Fonts/arialbd.ttf"),
-    ),
-    (
-        Path("C:/Windows/Fonts/calibri.ttf"),
-        Path("C:/Windows/Fonts/calibrib.ttf"),
-    ),
-    (
-        Path(
-            "/usr/share/fonts/truetype/dejavu/"
-            "DejaVuSans.ttf"
-        ),
-        Path(
-            "/usr/share/fonts/truetype/dejavu/"
-            "DejaVuSans-Bold.ttf"
-        ),
-    ),
-    (
-        Path(
-            "/usr/share/fonts/truetype/liberation2/"
-            "LiberationSans-Regular.ttf"
-        ),
-        Path(
-            "/usr/share/fonts/truetype/liberation2/"
-            "LiberationSans-Bold.ttf"
-        ),
-    ),
-    (
-        Path(
-            "/usr/share/fonts/truetype/liberation/"
-            "LiberationSans-Regular.ttf"
-        ),
-        Path(
-            "/usr/share/fonts/truetype/liberation/"
-            "LiberationSans-Bold.ttf"
-        ),
-    ),
-]
+# ============================================================
+# 1. LaTeX Rendering
+# ============================================================
+
+_latex_cache: dict[str, str | None] = {}
 
 
-def register_unicode_fonts() -> tuple[str, str]:
-    """
-    Регистрирует Unicode-шрифты.
+def _render_latex_to_data_uri(
+    latex: str, fontsize: int = 14
+) -> str | None:
+    """Render a LaTeX formula to a base64 PNG data URI."""
+    cache_key = f"{fontsize}:{latex}"
+    if cache_key in _latex_cache:
+        return _latex_cache[cache_key]
 
-    Windows:
-        Arial или Calibri.
-
-    Linux / Render:
-        DejaVu Sans или Liberation Sans.
-    """
-    registered_fonts = set(
-        pdfmetrics.getRegisteredFontNames()
-    )
-
-    if (
-        FONT_REGULAR_NAME in registered_fonts
-        and FONT_BOLD_NAME in registered_fonts
-    ):
-        return (
-            FONT_REGULAR_NAME,
-            FONT_BOLD_NAME,
+    try:
+        fig, ax = plt.subplots(figsize=(0.01, 0.01))
+        fig.patch.set_alpha(0)
+        ax.set_axis_off()
+        ax.text(
+            0.5, 0.5,
+            f"${latex}$",
+            fontsize=fontsize,
+            ha="center",
+            va="center",
+            transform=ax.transAxes,
         )
 
-    for regular_path, bold_path in FONT_CANDIDATES:
-        if not (
-            regular_path.exists()
-            and bold_path.exists()
-        ):
-            continue
+        buf = io.BytesIO()
+        fig.savefig(
+            buf,
+            format="png",
+            dpi=200,
+            bbox_inches="tight",
+            pad_inches=0.05,
+            transparent=True,
+        )
+        plt.close(fig)
+        buf.seek(0)
 
-        try:
-            pdfmetrics.registerFont(
-                TTFont(
-                    FONT_REGULAR_NAME,
-                    str(regular_path),
+        b64 = base64.b64encode(buf.read()).decode("ascii")
+        data_uri = f"data:image/png;base64,{b64}"
+        _latex_cache[cache_key] = data_uri
+        return data_uri
+
+    except Exception:
+        logger.warning(
+            "Failed to render LaTeX: %s", latex, exc_info=True
+        )
+        plt.close("all")
+        _latex_cache[cache_key] = None
+        return None
+
+
+def _prepare_text(text: str | None) -> str:
+    """
+    Tokenise text: render LaTeX formulas as images,
+    escape the rest as safe HTML.
+    """
+    if not text:
+        return ""
+
+    tokens: list[tuple[str, str]] = []
+    pos = 0
+
+    for m in re.finditer(
+        r"\$\$(.+?)\$\$|\$(.+?)\$", text, re.DOTALL
+    ):
+        if m.start() > pos:
+            tokens.append(("text", text[pos : m.start()]))
+
+        if m.group(1) is not None:
+            tokens.append(("block_latex", m.group(1).strip()))
+        else:
+            tokens.append(("inline_latex", m.group(2).strip()))
+
+        pos = m.end()
+
+    if pos < len(text):
+        tokens.append(("text", text[pos:]))
+
+    parts: list[str] = []
+
+    for kind, content in tokens:
+        if kind == "text":
+            safe = html.escape(content).replace("\n", "<br>")
+            parts.append(safe)
+
+        elif kind == "block_latex":
+            src = _render_latex_to_data_uri(content, fontsize=16)
+            if src:
+                alt = html.escape(content)
+                parts.append(
+                    f'<img src="{src}" '
+                    f'style="display:block;margin:4px auto;'
+                    f'height:1.6em;" alt="{alt}">'
                 )
-            )
-
-            pdfmetrics.registerFont(
-                TTFont(
-                    FONT_BOLD_NAME,
-                    str(bold_path),
+            else:
+                parts.append(
+                    f'<code class="lf">'
+                    f"{html.escape(content)}</code>"
                 )
-            )
 
-            pdfmetrics.registerFontFamily(
-                FONT_REGULAR_NAME,
-                normal=FONT_REGULAR_NAME,
-                bold=FONT_BOLD_NAME,
-                italic=FONT_REGULAR_NAME,
-                boldItalic=FONT_BOLD_NAME,
-            )
+        elif kind == "inline_latex":
+            src = _render_latex_to_data_uri(content, fontsize=13)
+            if src:
+                alt = html.escape(content)
+                parts.append(
+                    f'<img src="{src}" '
+                    f'style="display:inline-block;'
+                    f'vertical-align:middle;'
+                    f'height:1.2em;margin:0 2px;" '
+                    f'alt="{alt}">'
+                )
+            else:
+                parts.append(
+                    f'<code class="lf">'
+                    f"{html.escape(content)}</code>"
+                )
 
-            logger.info(
-                "PDF Unicode font registered: %s",
-                regular_path,
-            )
-
-            return (
-                FONT_REGULAR_NAME,
-                FONT_BOLD_NAME,
-            )
-
-        except Exception:
-            logger.exception(
-                "Failed to register PDF font: %s",
-                regular_path,
-            )
-
-    raise RuntimeError(
-        "Unicode PDF font was not found. "
-        "Install DejaVu Sans or Liberation Sans."
-    )
+    return "".join(parts)
 
 
-def escape_reportlab(
-    value: Any,
-) -> str:
-    """
-    Экранирует текст для ReportLab Paragraph.
-    """
+# ============================================================
+# 2. Logo
+# ============================================================
+
+_logo_cache: str | None = None
+
+
+def _get_logo_data_uri() -> str:
+    """Download logo and return as data URI."""
+    global _logo_cache
+    if _logo_cache is not None:
+        return _logo_cache
+
+    try:
+        resp = httpx.get(
+            LOGO_URL, timeout=10, follow_redirects=True
+        )
+        resp.raise_for_status()
+        ct = resp.headers.get("content-type", "image/png")
+        b64 = base64.b64encode(resp.content).decode("ascii")
+        _logo_cache = f"data:{ct};base64,{b64}"
+    except Exception:
+        logger.warning("Failed to download logo from %s", LOGO_URL)
+        _logo_cache = ""
+
+    return _logo_cache
+
+
+# ============================================================
+# 3. Data Helpers
+# ============================================================
+
+
+def _enum_str(value: Any) -> str:
     if value is None:
-        return ""
-
-    return html.escape(
-        str(value),
-        quote=True,
-    )
+        return "\u2014"
+    v = getattr(value, "value", None)
+    return str(v) if v is not None else str(value)
 
 
-def strip_markdown(
-    value: str | None,
-) -> str:
-    """
-    Преобразует Markdown и простой HTML
-    в читаемый обычный текст.
-
-    LaTeX-маркеры сохраняются.
-    """
-    if not value:
-        return ""
-
-    text = str(value)
-
-    text = re.sub(
-        r"```(?:\w+)?\s*(.*?)```",
-        r"\1",
-        text,
-        flags=re.DOTALL,
-    )
-
-    text = re.sub(
-        r"`([^`]+)`",
-        r"\1",
-        text,
-    )
-
-    text = re.sub(
-        r"!\[([^\]]*)\]\([^)]+\)",
-        r"[Изображение: \1]",
-        text,
-    )
-
-    text = re.sub(
-        r"\[([^\]]+)\]\([^)]+\)",
-        r"\1",
-        text,
-    )
-
-    text = re.sub(
-        r"^\s{0,3}#{1,6}\s+",
-        "",
-        text,
-        flags=re.MULTILINE,
-    )
-
-    text = re.sub(
-        r"(\*\*|__)(.*?)\1",
-        r"\2",
-        text,
-        flags=re.DOTALL,
-    )
-
-    text = re.sub(
-        r"(?<!\*)\*([^*\n]+)\*",
-        r"\1",
-        text,
-    )
-
-    text = re.sub(
-        r"(?<!_)_([^_\n]+)_",
-        r"\1",
-        text,
-    )
-
-    text = re.sub(
-        r"^\s*[-*+]\s+",
-        "• ",
-        text,
-        flags=re.MULTILINE,
-    )
-
-    text = re.sub(
-        r"^\s*(\d+)\.\s+",
-        r"\1. ",
-        text,
-        flags=re.MULTILINE,
-    )
-
-    text = re.sub(
-        r"<br\s*/?>",
-        "\n",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    text = re.sub(
-        r"</p\s*>",
-        "\n",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    text = re.sub(
-        r"</div\s*>",
-        "\n",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    text = re.sub(
-        r"<[^>]+>",
-        "",
-        text,
-    )
-
-    text = html.unescape(text)
-
-    text = text.replace(
-        "\r\n",
-        "\n",
-    ).replace(
-        "\r",
-        "\n",
-    )
-
-    text = re.sub(
-        r"[ \t]+\n",
-        "\n",
-        text,
-    )
-
-    text = re.sub(
-        r"\n{3,}",
-        "\n\n",
-        text,
-    )
-
-    return text.strip()
-
-
-def prepare_paragraph_text(
-    value: str | None,
-) -> str:
-    """
-    Подготавливает текст для Paragraph.
-    """
-    cleaned = strip_markdown(
-        value
-    )
-
-    escaped = escape_reportlab(
-        cleaned
-    )
-
-    return escaped.replace(
-        "\n",
-        "<br/>",
-    )
-
-
-def get_enum_value(
-    value: Any,
-) -> str:
-    if value is None:
-        return ""
-
-    enum_value = getattr(
-        value,
-        "value",
-        None,
-    )
-
-    if enum_value is not None:
-        return str(enum_value)
-
-    return str(value)
-
-
-def get_user_name(
-    user: Any,
-) -> str:
+def _user_name(user: Any) -> str:
     if user is None:
-        return "Не указан"
-
-    full_name = getattr(
-        user,
-        "full_name",
-        None,
-    )
-
-    if full_name:
-        return str(full_name)
-
-    username = getattr(
-        user,
-        "username",
-        None,
-    )
-
-    if username:
-        return str(username)
-
-    user_id = getattr(
-        user,
-        "id",
-        None,
-    )
-
-    if user_id is not None:
-        return f"Пользователь #{user_id}"
-
-    return "Не указан"
+        return "\u2014"
+    for attr in ("full_name", "username"):
+        val = getattr(user, attr, None)
+        if val:
+            return str(val)
+    return "\u2014"
 
 
-def get_subject_title(
-    variant: Any,
-) -> str:
-    subject = getattr(
-        variant,
-        "subject",
-        None,
-    )
-
-    if subject is not None:
-        title = getattr(
-            subject,
-            "title",
-            None,
-        )
-
-        if title:
-            return str(title)
-
-    subject_id = getattr(
-        variant,
-        "subject_id",
-        None,
-    )
-
-    if subject_id is not None:
-        return f"Предмет #{subject_id}"
-
-    return "Не указан"
+def _subject_title(variant: Any) -> str:
+    subj = getattr(variant, "subject", None)
+    if subj:
+        t = getattr(subj, "title", None)
+        if t:
+            return str(t)
+    return "\u2014"
 
 
-def get_variant_class(
-    variant: Any,
-) -> str:
-    """
-    Возвращает класс, если такое поле
-    присутствует в модели варианта.
-    """
-    for field_name in (
-        "grade",
-        "class_name",
-        "school_class",
-    ):
-        value = getattr(
-            variant,
-            field_name,
-            None,
-        )
-
-        if value:
-            return str(value)
-
-    return "Не указан"
+def _variant_grade(variant: Any) -> str:
+    for field in ("grade", "class_name", "school_class"):
+        val = getattr(variant, field, None)
+        if val:
+            return str(val)
+    return "\u2014"
 
 
-def get_objective_label(
-    question: Any,
-) -> str:
-    objective = getattr(
-        question,
-        "learning_objective",
-        None,
-    )
-
-    if objective is not None:
-        code = str(
-            getattr(
-                objective,
-                "code",
-                "",
-            )
-            or ""
-        )
-
-        title_ru = str(
-            getattr(
-                objective,
-                "title_ru",
-                "",
-            )
-            or ""
-        )
-
-        if code and title_ru:
-            return f"{code}: {title_ru}"
-
-        return code or title_ru or "Не указан"
-
-    objective_id = getattr(
-        question,
-        "learning_objective_id",
-        None,
-    )
-
-    if objective_id is not None:
-        return f"ОРО #{objective_id}"
-
-    return "Не указан"
+def _objective_label(question: Any) -> str:
+    obj = getattr(question, "learning_objective", None)
+    if obj:
+        code = str(getattr(obj, "code", "") or "")
+        title = str(getattr(obj, "title_ru", "") or "")
+        if code and title:
+            return f"{code}: {title}"
+        return code or title or "\u2014"
+    return "\u2014"
 
 
-def normalize_options(
-    question: Any,
-) -> list[dict[str, Any]]:
-    """
-    Нормализует старые и двуязычные ответы.
-    """
-    raw_options = getattr(
-        question,
-        "options",
-        None,
-    ) or []
-
-    if not isinstance(
-        raw_options,
-        list,
-    ):
+def _normalize_options(question: Any) -> list[dict[str, Any]]:
+    raw = getattr(question, "options", None) or []
+    if not isinstance(raw, list):
         return []
 
     result: list[dict[str, Any]] = []
-
-    for index, option in enumerate(
-        raw_options,
-    ):
-        if not isinstance(
-            option,
-            dict,
-        ):
+    for i, opt in enumerate(raw):
+        if not isinstance(opt, dict):
             continue
-
-        default_key = chr(
-            65 + index
-        )
-
-        legacy_text = str(
-            option.get(
-                "text",
-                "",
-            )
-            or ""
-        )
-
+        key = str(opt.get("key", chr(65 + i)) or chr(65 + i))
+        kz = str(opt.get("text_kz", opt.get("text", "")) or "")
+        ru = str(opt.get("text_ru", opt.get("text", "")) or "")
         result.append(
             {
-                "key": str(
-                    option.get(
-                        "key",
-                        default_key,
-                    )
-                    or default_key
-                ),
-                "text_kz": str(
-                    option.get(
-                        "text_kz",
-                        legacy_text,
-                    )
-                    or ""
-                ),
-                "text_ru": str(
-                    option.get(
-                        "text_ru",
-                        legacy_text,
-                    )
-                    or ""
-                ),
-                "is_correct": (
-                    option.get(
-                        "is_correct"
-                    )
-                    is True
-                ),
+                "key": key,
+                "text_kz": _prepare_text(kz),
+                "text_ru": _prepare_text(ru),
+                "is_correct": opt.get("is_correct") is True,
             }
         )
-
     return result
 
 
-def create_styles(
-    regular_font: str,
-    bold_font: str,
-) -> dict[str, ParagraphStyle]:
-    base_styles = getSampleStyleSheet()
-
-    return {
-        "title": ParagraphStyle(
-            name="MODO_Title",
-            parent=base_styles["Title"],
-            fontName=bold_font,
-            fontSize=20,
-            leading=25,
-            alignment=TA_CENTER,
-            textColor=colors.HexColor(
-                "#111827"
-            ),
-            spaceAfter=8 * mm,
-        ),
-        "variant_title": ParagraphStyle(
-            name="MODO_VariantTitle",
-            parent=base_styles["Heading1"],
-            fontName=bold_font,
-            fontSize=16,
-            leading=21,
-            textColor=colors.HexColor(
-                "#1D4ED8"
-            ),
-            spaceBefore=3 * mm,
-            spaceAfter=4 * mm,
-        ),
-        "question_title": ParagraphStyle(
-            name="MODO_QuestionTitle",
-            parent=base_styles["Heading2"],
-            fontName=bold_font,
-            fontSize=13,
-            leading=17,
-            textColor=colors.HexColor(
-                "#111827"
-            ),
-            spaceBefore=3 * mm,
-            spaceAfter=3 * mm,
-        ),
-        "section": ParagraphStyle(
-            name="MODO_Section",
-            parent=base_styles["Heading3"],
-            fontName=bold_font,
-            fontSize=10,
-            leading=14,
-            textColor=colors.HexColor(
-                "#374151"
-            ),
-            spaceBefore=2 * mm,
-            spaceAfter=1.5 * mm,
-        ),
-        "normal": ParagraphStyle(
-            name="MODO_Normal",
-            parent=base_styles["Normal"],
-            fontName=regular_font,
-            fontSize=10,
-            leading=14,
-            alignment=TA_LEFT,
-            textColor=colors.HexColor(
-                "#111827"
-            ),
-            spaceAfter=2 * mm,
-        ),
-        "meta": ParagraphStyle(
-            name="MODO_Meta",
-            parent=base_styles["Normal"],
-            fontName=regular_font,
-            fontSize=8.5,
-            leading=12,
-            textColor=colors.HexColor(
-                "#4B5563"
-            ),
-            spaceAfter=1 * mm,
-        ),
-        "option": ParagraphStyle(
-            name="MODO_Option",
-            parent=base_styles["Normal"],
-            fontName=regular_font,
-            fontSize=9.5,
-            leading=13,
-            leftIndent=4 * mm,
-            firstLineIndent=-4 * mm,
-            textColor=colors.HexColor(
-                "#111827"
-            ),
-            spaceAfter=1.5 * mm,
-        ),
-        "correct_option": ParagraphStyle(
-            name="MODO_CorrectOption",
-            parent=base_styles["Normal"],
-            fontName=bold_font,
-            fontSize=9.5,
-            leading=13,
-            leftIndent=4 * mm,
-            firstLineIndent=-4 * mm,
-            textColor=colors.HexColor(
-                "#166534"
-            ),
-            spaceAfter=1.5 * mm,
-        ),
-        "caption": ParagraphStyle(
-            name="MODO_Caption",
-            parent=base_styles["Normal"],
-            fontName=regular_font,
-            fontSize=7.5,
-            leading=10,
-            alignment=TA_CENTER,
-            textColor=colors.HexColor(
-                "#6B7280"
-            ),
-        ),
-    }
+# ============================================================
+# 4. Media
+# ============================================================
 
 
-def create_metadata_table(
-    rows: list[tuple[str, str]],
-    styles: dict[str, ParagraphStyle],
-) -> Table:
-    data: list[list[Paragraph]] = []
-
-    for label, value in rows:
-        data.append(
-            [
-                Paragraph(
-                    (
-                        f"<b>"
-                        f"{escape_reportlab(label)}"
-                        f"</b>"
-                    ),
-                    styles["meta"],
-                ),
-                Paragraph(
-                    prepare_paragraph_text(
-                        value
-                    ),
-                    styles["meta"],
-                ),
-            ]
-        )
-
-    table = Table(
-        data,
-        colWidths=[
-            42 * mm,
-            118 * mm,
-        ],
-        hAlign="LEFT",
-    )
-
-    table.setStyle(
-        TableStyle(
-            [
-                (
-                    "BACKGROUND",
-                    (0, 0),
-                    (0, -1),
-                    colors.HexColor(
-                        "#F3F4F6"
-                    ),
-                ),
-                (
-                    "BOX",
-                    (0, 0),
-                    (-1, -1),
-                    0.5,
-                    colors.HexColor(
-                        "#D1D5DB"
-                    ),
-                ),
-                (
-                    "INNERGRID",
-                    (0, 0),
-                    (-1, -1),
-                    0.25,
-                    colors.HexColor(
-                        "#E5E7EB"
-                    ),
-                ),
-                (
-                    "VALIGN",
-                    (0, 0),
-                    (-1, -1),
-                    "TOP",
-                ),
-                (
-                    "LEFTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    6,
-                ),
-                (
-                    "RIGHTPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    6,
-                ),
-                (
-                    "TOPPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    5,
-                ),
-                (
-                    "BOTTOMPADDING",
-                    (0, 0),
-                    (-1, -1),
-                    5,
-                ),
-            ]
-        )
-    )
-
-    return table
-
-
-def load_media_thumbnail(
-    media: Any,
-    styles: dict[str, ParagraphStyle],
-) -> list[Any]:
-    """
-    Загружает оригинал из R2
-    и создаёт миниатюру для PDFошибке PDF остаётся читаемым.
-    """
-    r2_key = getattr(
-        media,
-        "r2_key",
-        None,
-    )
-
+def _load_media_data_uri(media: Any) -> dict[str, str] | None:
+    r2_key = getattr(media, "r2_key", None)
     if not r2_key:
-        return []
+        return None
 
-    original_filename = str(
-        getattr(
-            media,
-            "original_filename",
-            "Изображение",
-        )
-        or "Изображение"
+    filename = str(
+        getattr(media, "original_filename", "image") or "image"
     )
 
     try:
         client = create_s3_client()
-
-        response = client.get_object(
+        resp = client.get_object(
             Bucket=get_r2_bucket_name(),
-            Key=normalize_r2_key(
-                str(r2_key)
-            ),
+            Key=normalize_r2_key(str(r2_key)),
         )
-
-        image_bytes = response[
-            "Body"
-        ].read()
-
-        image_buffer = io.BytesIO(
-            image_bytes
+        data = resp["Body"].read()
+        ct = (
+            getattr(media, "content_type", None) or "image/png"
         )
-
-        image = Image(
-            image_buffer
-        )
-
-        source_width = float(
-            image.imageWidth
-        )
-
-        source_height = float(
-            image.imageHeight
-        )
-
-        if (
-            source_width <= 0
-            or source_height <= 0
-        ):
-            return []
-
-        max_width = 75 * mm
-        max_height = 55 * mm
-
-        scale = min(
-            max_width / source_width,
-            max_height / source_height,
-            1.0,
-        )
-
-        image.drawWidth = (
-            source_width * scale
-        )
-
-        image.drawHeight = (
-            source_height * scale
-        )
-
-        image.hAlign = "CENTER"
-
-        caption = Paragraph(
-            escape_reportlab(
-                original_filename
-            ),
-            styles["caption"],
-        )
-
-        return [
-            KeepTogether(
-                [
-                    image,
-                    Spacer(
-                        1,
-                        1 * mm,
-                    ),
-                    caption,
-                    Spacer(
-                        1,
-                        3 * mm,
-                    ),
-                ]
-            )
-        ]
-
+        b64 = base64.b64encode(data).decode("ascii")
+        return {
+            "src": f"data:{ct};base64,{b64}",
+            "alt": filename,
+        }
     except Exception:
-        logger.exception(
-            "Failed to add image to PDF: %s",
-            r2_key,
+        logger.exception("Failed to load media: %s", r2_key)
+        return {"src": "", "alt": filename}
+
+
+# ============================================================
+# 5. HTML / CSS Template
+# ============================================================
+
+TEMPLATE = r"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<style>
+/* ── Page Setup ─────────────────────────────── */
+@page {
+    size: A4;
+    margin: 20mm 16mm 22mm 16mm;
+    @bottom-center {
+        content: "\2014  " counter(page) "  \2014";
+        font-size: 8pt;
+        color: #9ca3af;
+    }
+}
+@page :first {
+    @bottom-center { content: none; }
+}
+
+* { box-sizing: border-box; }
+
+body {
+    font-family: "Noto Sans", "DejaVu Sans",
+                 "Liberation Sans", Arial, sans-serif;
+    font-size: 10pt;
+    color: #1f2937;
+    line-height: 1.5;
+    margin: 0;
+    padding: 0;
+}
+
+/* ── Cover ──────────────────────────────────── */
+.cover {
+    text-align: center;
+    padding-top: 70mm;
+}
+.cover .logo {
+    width: 40mm;
+    height: auto;
+    margin-bottom: 10mm;
+}
+.cover h1 {
+    font-size: 22pt;
+    color: #1e3a5f;
+    font-weight: 700;
+    margin: 0 0 6mm 0;
+}
+.cover .divider {
+    width: 50mm;
+    height: 2px;
+    background: #d1d5db;
+    margin: 8mm auto;
+}
+.cover .stats {
+    font-size: 11pt;
+    color: #6b7280;
+    line-height: 2;
+}
+.cover .date {
+    font-size: 9pt;
+    color: #9ca3af;
+    margin-top: 50mm;
+}
+
+/* ── Variant Header ─────────────────────────── */
+.vh {
+    font-size: 15pt;
+    font-weight: 700;
+    color: #1e3a5f;
+    border-bottom: 2px solid #2563eb;
+    padding-bottom: 3mm;
+    margin-bottom: 5mm;
+}
+
+/* ── Metadata Table ─────────────────────────── */
+.mt {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 5mm;
+    font-size: 9pt;
+}
+.mt td {
+    padding: 2.5mm 3.5mm;
+    border: 1px solid #e5e7eb;
+    vertical-align: top;
+}
+.mt .l {
+    width: 36%;
+    background: #f3f4f6;
+    font-weight: 600;
+    color: #374151;
+}
+.mt .v { color: #1f2937; }
+
+/* ── Description ────────────────────────────── */
+.vd {
+    font-size: 9.5pt;
+    color: #4b5563;
+    margin-bottom: 5mm;
+    padding: 3mm 4mm;
+    background: #f9fafb;
+    border-left: 3px solid #d1d5db;
+}
+
+/* ── Question ───────────────────────────────── */
+.q {
+    margin-bottom: 5mm;
+    padding-bottom: 4mm;
+    border-bottom: 1px solid #e5e7eb;
+}
+.qt {
+    font-size: 11pt;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 1mm;
+}
+.qm {
+    font-size: 8.5pt;
+    color: #6b7280;
+    margin-bottom: 2.5mm;
+}
+
+/* ── Section Label ──────────────────────────── */
+.s {
+    font-size: 8.5pt;
+    font-weight: 700;
+    color: #374151;
+    text-transform: uppercase;
+    letter-spacing: 0.4pt;
+    margin-top: 2.5mm;
+    margin-bottom: 1mm;
+}
+
+/* ── Content ────────────────────────────────── */
+.c {
+    font-size: 9.5pt;
+    margin-bottom: 1.5mm;
+    line-height: 1.6;
+}
+.lg {
+    font-weight: 700;
+    color: #2563eb;
+}
+
+/* ── Options ────────────────────────────────── */
+.o {
+    padding: 2mm 3mm 2mm 7mm;
+    margin-bottom: 1.5mm;
+    border: 1px solid #e5e7eb;
+    border-radius: 1.5mm;
+    font-size: 9.5pt;
+    page-break-inside: avoid;
+}
+.o .k {
+    font-weight: 700;
+    color: #4b5563;
+}
+.o.ok {
+    background: #f0fdf4;
+    border-color: #86efac;
+    border-left: 3px solid #16a34a;
+}
+.o.ok .k { color: #16a34a; }
+.bg {
+    font-size: 8pt;
+    color: #16a34a;
+    font-weight: 700;
+    margin-left: 2mm;
+}
+
+/* ── Explanation ────────────────────────────── */
+.e {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-left: 3px solid #f59e0b;
+    padding: 2.5mm 3mm;
+    margin-top: 2mm;
+    border-radius: 1.5mm;
+}
+.e .s { color: #92400e; }
+
+/* ── Media ──────────────────────────────────── */
+.mw {
+    text-align: center;
+    margin: 2mm 0;
+}
+.mw img {
+    max-width: 80mm;
+    max-height: 50mm;
+    height: auto;
+}
+.mc {
+    font-size: 8pt;
+    color: #9ca3af;
+    margin-top: 1mm;
+}
+
+/* ── LaTeX Fallback ─────────────────────────── */
+.lf {
+    font-family: "Courier New", Courier, monospace;
+    background: #f3f4f6;
+    padding: 0.5mm 1.5mm;
+    border-radius: 1mm;
+    font-size: 9pt;
+    color: #7c3aed;
+}
+
+/* ── Page Break ─────────────────────────────── */
+.pb { page-break-before: always; }
+</style>
+</head>
+<body>
+
+<!-- ════════ COVER ════════ -->
+<div class="cover">
+    {% if logo_src %}
+    <img src="{{ logo_src }}" class="logo" alt="Logo">
+    {% endif %}
+    <h1>{{ cover_title }}</h1>
+    <div class="divider"></div>
+    <div class="stats">
+        Количество вариантов: {{ variant_count }}<br>
+        Количество вопросов: {{ question_count }}
+    </div>
+    <div class="date">{{ generated_at }}</div>
+</div>
+
+<!-- ════════ VARIANTS ════════ -->
+{% for v in variants %}
+<div class="pb"></div>
+
+<div class="vh">Вариант {{ v.number }}: {{ v.title }}</div>
+
+<table class="mt">
+    <tr><td class="l">ФИО разработчика</td><td class="v">{{ v.developer }}</td></tr>
+    <tr><td class="l">Предмет</td><td class="v">{{ v.subject }}</td></tr>
+    <tr><td class="l">Класс</td><td class="v">{{ v.grade }}</td></tr>
+    <tr><td class="l">Верификатор</td><td class="v">{{ v.reviewer }}</td></tr>
+    <tr><td class="l">Куратор</td><td class="v">{{ v.curator }}</td></tr>
+    <tr><td class="l">Статус</td><td class="v">{{ v.status }}</td></tr>
+</table>
+
+{% if v.description %}
+<div class="vd">{{ v.description|safe }}</div>
+{% endif %}
+
+{% for q in v.questions %}
+<div class="question">
+    <div class="qt">Вопрос {{ q.number }}</div>
+    <div class="qm">ОРО: {{ q.objective }} | Когнитивный уровень: {{ q.cognitive_level }}</div>
+
+    {% if q.resource_kz or q.resource_ru %}
+    <div class="s">Ресурсный блок</div>
+    {% if q.resource_kz %}<div class="c"><span class="lg">KZ:</span> {{ q.resource_kz|safe }}</div>{% endif %}
+    {% if q.resource_ru %}<div class="c"><span class="lg">RU:</span> {{ q.resource_ru|safe }}</div>{% endif %}
+    {% endif %}
+
+    <div class="s">Текст вопроса</div>
+    {% if q.text_kz %}<div class="c"><span class="lg">KZ:</span> {{ q.text_kz|safe }}</div>{% endif %}
+    {% if q.text_ru %}<div class="c"><span class="lg">RU:</span> {{ q.text_ru|safe }}</div>{% endif %}
+
+    {% if q.options %}
+    <div class="s">Варианты ответа</div>
+    {% for o in q.options %}
+    <div class="o{% if o.is_correct %} ok{% endif %}">
+        <span class="k">{{ o.key }}.</span>
+        KZ: {{ o.text_kz|safe }} &nbsp;&middot;&nbsp;
+        RU: {{ o.text_ru|safe }}
+        {% if o.is_correct %}<span class="bg">✓ верный ответ</span>{% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if q.explanation_kz or q.explanation_ru %}
+    <div class="e">
+        <div class="s">Пояснение</div>
+        {% if q.explanation_kz %}<div class="c"><span class="lg">KZ:</span> {{ q.explanation_kz|safe }}</div>{% endif %}
+        {% if q.explanation_ru %}<div class="c"><span class="lg">RU:</span> {{ q.explanation_ru|safe }}</div>{% endif %}
+    </div>
+    {% endif %}
+
+    {% if q.media %}
+    <div class="s">Изображения</div>
+    {% for img in q.media %}
+    <div class="mw">
+        {% if img.src %}
+        <img src="{{ img.src }}" alt="{{ img.alt }}">
+        {% else %}
+        <span class="lf">[Изображение недоступно: {{ img.alt }}]</span>
+        {% endif %}
+        <div class="mc">{{ img.alt }}</div>
+    </div>
+    {% endfor %}
+    {% endif %}
+</div>
+{% endfor %}
+{% endfor %}
+
+</body>
+</html>"""
+
+
+# ============================================================
+# 6. Data Preparation
+# ============================================================
+
+
+def _prepare_variant(variant: Any, index: int) -> dict[str, Any]:
+    """Convert a Variant ORM object into a template-ready dict."""
+    questions_raw = sorted(
+        list(getattr(variant, "questions", None) or []),
+        key=lambda q: (
+            getattr(q, "order_number", 0) or 0,
+            getattr(q, "id", 0) or 0,
+        ),
+    )
+
+    q_list: list[dict[str, Any]] = []
+
+    for qi, question in enumerate(questions_raw, start=1):
+        order = getattr(question, "order_number", None) or qi
+
+        # Bilingual text with legacy fallback
+        text_kz = getattr(question, "question_text_kz", None)
+        text_ru = getattr(question, "question_text_ru", None)
+        legacy_body = getattr(question, "body", None)
+        if not text_kz and not text_ru and legacy_body:
+            text_ru = legacy_body
+
+        # Explanation with legacy fallback
+        expl_kz = getattr(question, "explanation_kz", None)
+        expl_ru = getattr(question, "explanation_ru", None)
+        legacy_expl = getattr(question, "explanation", None)
+        if not expl_kz and not expl_ru and legacy_expl:
+            expl_ru = legacy_expl
+
+        media_files = sorted(
+            list(getattr(question, "media_files", None) or []),
+            key=lambda m: getattr(m, "id", 0),
         )
 
-        return [
-            Paragraph(
-                (
-                    "[Изображение недоступно: "
-                    f"{escape_reportlab(original_filename)}]"
+        q_list.append(
+            {
+                "number": int(order),
+                "objective": _objective_label(question),
+                "cognitive_level": _enum_str(
+                    getattr(question, "cognitive_level", None)
                 ),
-                styles["meta"],
-            )
-        ]
-
-
-def append_media_gallery(
-    story: list[Any],
-    question: Any,
-    styles: dict[str, ParagraphStyle],
-) -> None:
-    media_files = list(
-        getattr(
-            question,
-            "media_files",
-            None,
-        )
-        or []
-    )
-
-    if not media_files:
-        return
-
-    story.append(
-        Paragraph(
-            "Изображения и схемы",
-            styles["section"],
-        )
-    )
-
-    for media in media_files:
-        story.extend(
-            load_media_thumbnail(
-                media,
-                styles,
-            )
-        )
-
-
-def append_question(
-    story: list[Any],
-    question: Any,
-    question_number: int,
-    styles: dict[str, ParagraphStyle],
-) -> None:
-    story.append(
-        Paragraph(
-            f"Вопрос {question_number}",
-            styles["question_title"],
-        )
-    )
-
-    objective_label = (
-        get_objective_label(
-            question
-        )
-    )
-
-    cognitive_level = (
-        get_enum_value(
-            getattr(
-                question,
-                "cognitive_level",
-                None,
-            )
-        )
-        or "Не указан"
-    )
-
-    story.append(
-        Paragraph(
-            (
-                "ОРО: "
-                f"{escape_reportlab(objective_label)}"
-                " | Когнитивный уровень: "
-                f"{escape_reportlab(cognitive_level)}"
-            ),
-            styles["meta"],
-        )
-    )
-
-    resource_kz = getattr(
-        question,
-        "resource_kz",
-        None,
-    )
-
-    resource_ru = getattr(
-        question,
-        "resource_ru",
-        None,
-    )
-
-    if resource_kz or resource_ru:
-        story.append(
-            Paragraph(
-                "Ресурсный блок",
-                styles["section"],
-            )
-        )
-
-        if resource_kz:
-            story.append(
-                Paragraph(
-                    (
-                        "<b>KZ:</b> "
-                        + prepare_paragraph_text(
-                            resource_kz
-                        )
-                    ),
-                    styles["normal"],
-                )
-            )
-
-        if resource_ru:
-            story.append(
-                Paragraph(
-                    (
-                        "<b>RU:</b> "
-                        + prepare_paragraph_text(
-                            resource_ru
-                        )
-                    ),
-                    styles["normal"],
-                )
-            )
-
-    story.append(
-        Paragraph(
-            "Текст вопроса",
-            styles["section"],
-        )
-    )
-
-    question_text_kz = getattr(
-        question,
-        "question_text_kz",
-        None,
-    )
-
-    question_text_ru = getattr(
-        question,
-        "question_text_ru",
-        None,
-    )
-
-    legacy_body = getattr(
-        question,
-        "body",
-        None,
-    )
-
-    if question_text_kz:
-        story.append(
-            Paragraph(
-                (
-                    "<b>KZ:</b> "
-                    + prepare_paragraph_text(
-                        question_text_kz
+                "resource_kz": _prepare_text(
+                    getattr(question, "resource_kz", None)
+                ),
+                "resource_ru": _prepare_text(
+                    getattr(question, "resource_ru", None)
+                ),
+                "text_kz": _prepare_text(text_kz),
+                "text_ru": _prepare_text(text_ru),
+                "options": _normalize_options(question),
+                "explanation_kz": _prepare_text(expl_kz),
+                "explanation_ru": _prepare_text(expl_ru),
+                "media": [
+                    m
+                    for m in (
+                        _load_media_data_uri(mf)
+                        for mf in media_files
                     )
-                ),
-                styles["normal"],
-            )
+                    if m
+                ],
+            }
         )
 
-    if question_text_ru:
-        story.append(
-            Paragraph(
-                (
-                    "<b>RU:</b> "
-                    + prepare_paragraph_text(
-                        question_text_ru
-                    )
-                ),
-                styles["normal"],
-            )
-        )
+    desc = getattr(variant, "description", None)
 
-    if (
-        not question_text_kz
-        and not question_text_ru
-        and legacy_body
-    ):
-        story.append(
-            Paragraph(
-                prepare_paragraph_text(
-                    legacy_body
-                ),
-                styles["normal"],
-            )
-        )
-
-    options = normalize_options(
-        question
-    )
-
-    if options:
-        story.append(
-            Paragraph(
-                "Варианты ответа",
-                styles["section"],
-            )
-        )
-
-        for option in options:
-            option_key = escape_reportlab(
-                option["key"]
-            )
-
-            option_style = (
-                styles["correct_option"]
-                if option["is_correct"]
-                else styles["option"]
-            )
-
-            correct_label = (
-                " [правильный ответ]"
-                if option["is_correct"]
-                else ""
-            )
-
-            story.append(
-                Paragraph(
-                    (
-                        f"<b>{option_key}.</b> "
-                        "KZ: "
-                        f"{prepare_paragraph_text(option['text_kz'])}"
-                        "<br/>"
-                        "RU: "
-                        f"{prepare_paragraph_text(option['text_ru'])}"
-                        f"{escape_reportlab(correct_label)}"
-                    ),
-                    option_style,
-                )
-            )
-
-    explanation_kz = getattr(
-        question,
-        "explanation_kz",
-        None,
-    )
-
-    explanation_ru = getattr(
-        question,
-        "explanation_ru",
-        None,
-    )
-
-    legacy_explanation = getattr(
-        question,
-        "explanation",
-        None,
-    )
-
-    if (
-        explanation_kz
-        or explanation_ru
-        or legacy_explanation
-    ):
-        story.append(
-            Paragraph(
-                "Пояснение",
-                styles["section"],
-            )
-        )
-
-        if explanation_kz:
-            story.append(
-                Paragraph(
-                    (
-                        "<b>KZ:</b> "
-                        + prepare_paragraph_text(
-                            explanation_kz
-                        )
-                    ),
-                    styles["normal"],
-                )
-            )
-
-        if explanation_ru:
-            story.append(
-                Paragraph(
-                    (
-                        "<b>RU:</b> "
-                        + prepare_paragraph_text(
-                            explanation_ru
-                        )
-                    ),
-                    styles["normal"],
-                )
-            )
-
-        if (
-            not explanation_kz
-            and not explanation_ru
-            and legacy_explanation
-        ):
-            story.append(
-                Paragraph(
-                    prepare_paragraph_text(
-                        legacy_explanation
-                    ),
-                    styles["normal"],
-                )
-            )
-
-    append_media_gallery(
-        story,
-        question,
-        styles,
-    )
-
-    story.append(
-        Spacer(
-            1,
-            4 * mm,
-        )
-    )
-
-    story.append(
-        HRFlowable(
-            width="100%",
-            thickness=0.5,
-            color=colors.HexColor(
-                "#D1D5DB"
-            ),
-        )
-    )
-
-    story.append(
-        Spacer(
-            1,
-            4 * mm,
-        )
-    )
+    return {
+        "number": index,
+        "title": getattr(variant, "title", None)
+        or f"Вариант {index}",
+        "description": _prepare_text(desc) if desc else "",
+        "developer": _user_name(
+            getattr(variant, "developer", None)
+        ),
+        "subject": _subject_title(variant),
+        "grade": _variant_grade(variant),
+        "reviewer": _user_name(
+            getattr(variant, "reviewer", None)
+        ),
+        "curator": _user_name(
+            getattr(variant, "curator", None)
+        ),
+        "status": _enum_str(
+            getattr(variant, "status", None)
+        ),
+        "questions": q_list,
+    }
 
 
-def generate_test_bank_pdf(
-    questions: list[Any],
-) -> bytes:
+# ============================================================
+# 7. PDF Generation (public API)
+# ============================================================
+
+
+def generate_test_bank_pdf(questions: list[Any]) -> bytes:
     """
-    Создаёт legacy PDF отдельных вопросов.
+    Legacy export of individual questions
+    (no variant grouping).
     """
-    regular_font, bold_font = (
-        register_unicode_fonts()
-    )
 
-    styles = create_styles(
-        regular_font,
-        bold_font,
-    )
+    class _Pseudo:
+        pass
 
-    buffer = io.BytesIO()
+    pseudo = _Pseudo()
+    pseudo.title = "Вопросы из банка"
+    pseudo.description = None
+    pseudo.developer = None
+    pseudo.reviewer = None
+    pseudo.curator = None
+    pseudo.subject = None
+    pseudo.status = None
+    pseudo.questions = questions
 
-    document = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        leftMargin=18 * mm,
-        rightMargin=18 * mm,
-        topMargin=18 * mm,
-        bottomMargin=18 * mm,
-        title="Банк тестовых заданий",
-        author="MODO Platform",
-    )
-
-    story: list[Any] = [
-        Paragraph(
-            "Банк тестовых заданий",
-            styles["title"],
-        ),
-        Paragraph(
-            (
-                "Количество вопросов: "
-                f"{len(questions)}"
-            ),
-            styles["normal"],
-        ),
-        Spacer(
-            1,
-            5 * mm,
-        ),
-        PageBreak(),
-    ]
-
-    for index, question in enumerate(
-        questions,
-        start=1,
-    ):
-        append_question(
-            story,
-            question,
-            index,
-            styles,
-        )
-
-    document.build(
-        story
-    )
-
-    buffer.seek(0)
-
-    return buffer.getvalue()
+    return generate_variants_test_bank_pdf([pseudo])
 
 
 def generate_variants_test_bank_pdf(
     variants: list[Any],
 ) -> bytes:
     """
-    Создаёт PDF выбранных вариантов.
-
-    Для каждого варианта выводятся:
-    - ФИО разработчика;
-    - предмет;
-    - класс;
-    - верификатор;
-    - куратор;
-    - вопросы;
-    - ответы;
-    - пояснения;
-    - изображения.
+    Generate a polished PDF for the given variants.
     """
-    regular_font, bold_font = (
-        register_unicode_fonts()
-    )
-
-    styles = create_styles(
-        regular_font,
-        bold_font,
-    )
-
-    buffer = io.BytesIO()
-
-    document = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        leftMargin=16 * mm,
-        rightMargin=16 * mm,
-        topMargin=16 * mm,
-        bottomMargin=16 * mm,
-        title="Экспорт вариантов MODO",
-        author="MODO Platform",
-        subject="Банк вариантов",
-    )
-
-    total_questions = sum(
-        len(
-            getattr(
-                variant,
-                "questions",
-                None,
-            )
-            or []
-        )
-        for variant in variants
-    )
-
-    story: list[Any] = [
-        Paragraph(
-            "Банк тестовых вариантов",
-            styles["title"],
-        ),
-        Paragraph(
-            (
-                "Количество вариантов: "
-                f"{len(variants)}"
-                "<br/>"
-                "Количество вопросов: "
-                f"{total_questions}"
-            ),
-            styles["normal"],
-        ),
-        Spacer(
-            1,
-            5 * mm,
-        ),
-        HRFlowable(
-            width="100%",
-            thickness=1,
-            color=colors.HexColor(
-                "#9CA3AF"
-            ),
-        ),
-        PageBreak(),
+    prepared = [
+        _prepare_variant(v, i + 1)
+        for i, v in enumerate(variants)
     ]
+    total_q = sum(len(v["questions"]) for v in prepared)
 
-    for variant_index, variant in enumerate(
-        variants,
-        start=1,
-    ):
-        variant_title = (
-            getattr(
-                variant,
-                "title",
-                None,
-            )
-            or f"Вариант {variant_index}"
-        )
+    now = datetime.now(timezone.utc)
+    generated_at = now.strftime("%d.%m.%Y %H:%M UTC")
 
-        story.append(
-            Paragraph(
-                (
-                    f"Вариант {variant_index}: "
-                    f"{escape_reportlab(variant_title)}"
-                ),
-                styles["variant_title"],
-            )
-        )
-
-        metadata_rows = [
-            (
-                "ФИО разработчика",
-                get_user_name(
-                    getattr(
-                        variant,
-                        "developer",
-                        None,
-                    )
-                ),
-            ),
-            (
-                "Предмет",
-                get_subject_title(
-                    variant
-                ),
-            ),
-            (
-                "Класс",
-                get_variant_class(
-                    variant
-                ),
-            ),
-            (
-                "Верификатор",
-                get_user_name(
-                    getattr(
-                        variant,
-                        "reviewer",
-                        None,
-                    )
-                ),
-            ),
-            (
-                "Куратор",
-                get_user_name(
-                    getattr(
-                        variant,
-                        "curator",
-                        None,
-                    )
-                ),
-            ),
-            (
-                "Статус",
-                get_enum_value(
-                    getattr(
-                        variant,
-                        "status",
-                        None,
-                    )
-                ),
-            ),
-        ]
-
-        story.append(
-            create_metadata_table(
-                metadata_rows,
-                styles,
-            )
-        )
-
-        description = getattr(
-            variant,
-            "description",
-            None,
-        )
-
-        if description:
-            story.extend(
-                [
-                    Spacer(
-                        1,
-                        3 * mm,
-                    ),
-                    Paragraph(
-                        (
-                            "<b>Описание:</b> "
-                            + prepare_paragraph_text(
-                                description
-                            )
-                        ),
-                        styles["normal"],
-                    ),
-                ]
-            )
-
-        story.append(
-            Spacer(
-                1,
-                5 * mm,
-            )
-        )
-
-        questions = list(
-            getattr(
-                variant,
-                "questions",
-                None,
-            )
-            or []
-        )
-
-        questions.sort(
-            key=lambda question: (
-                getattr(
-                    question,
-                    "order_number",
-                    0,
-                )
-                or 0,
-                getattr(
-                    question,
-                    "id",
-                    0,
-                )
-                or 0,
-            )
-        )
-
-        for fallback_number, question in enumerate(
-            questions,
-            start=1,
-        ):
-            question_number = (
-                getattr(
-                    question,
-                    "order_number",
-                    None,
-                )
-                or fallback_number
-            )
-
-            append_question(
-                story,
-                question,
-                int(question_number),
-                styles,
-            )
-
-        if variant_index < len(
-            variants
-        ):
-            story.append(
-                PageBreak()
-            )
-
-    document.build(
-        story
+    env = Environment(loader=BaseLoader(), autoescape=True)
+    tpl = env.from_string(TEMPLATE)
+    rendered = tpl.render(
+        logo_src=_get_logo_data_uri(),
+        cover_title="Банк тестовых вариантов",
+        variant_count=len(prepared),
+        question_count=total_q,
+        generated_at=generated_at,
+        variants=prepared,
     )
 
-    buffer.seek(0)
-
-    return buffer.getvalue()
+    pdf_bytes = HTML(string=rendered).write_pdf()
+    return pdf_bytes
