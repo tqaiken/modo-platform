@@ -20,7 +20,7 @@ router = APIRouter(prefix="/questions")
 require_developer = RoleGuard(UserRole.DEVELOPER)
 require_verifier = RoleGuard(UserRole.VERIFIER)
 require_curator = RoleGuard(UserRole.CURATOR)
-require_any = RoleGuard(UserRole.DEVELOPER, UserRole.VERIFIER, UserRole.CURATOR)
+require_any = RoleGuard(UserRole.DEVELOPER, UserRole.VERIFIER, UserRole.CURATOR, UserRole.SUPER_ADMIN)
 
 
 # ──────────────────── DEVELOPER ────────────────────
@@ -143,47 +143,29 @@ def get_verification_queue(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
-    user: User = Depends(require_verifier),
+    user: User = Depends(RoleGuard(UserRole.VERIFIER, UserRole.SUPER_ADMIN)),
 ):
-    """
-    Возвращает очередь вопросов на верификацию.
-
-    Верификатор видит только вопросы по предмету,
-    назначенному SUPER_ADMIN в его учётной записи.
-    """
-    if user.subject_id is None:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "Для верификатора не назначен предмет. "
-                "Обратитесь к SUPER_ADMIN."
-            ),
-        )
-
     query = db.query(Question).filter(
         Question.status == QuestionStatus.VERIFICATION,
-        Question.subject_id == user.subject_id,
     )
 
-    total = query.count()
+    if user.role != UserRole.SUPER_ADMIN:
+        if user.subject_id is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Для верификатора не назначен предмет. Обратитесь к SUPER_ADMIN.",
+            )
+        query = query.filter(Question.subject_id == user.subject_id)
 
+    total = query.count()
     items = (
         query
-        .order_by(
-            Question.submitted_at.asc(),
-            Question.id.asc(),
-        )
+        .order_by(Question.submitted_at.asc(), Question.id.asc())
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
     )
-
-    return QuestionList(
-        items=items,
-        total=total,
-        page=page,
-        page_size=page_size,
-    )
+    return QuestionList(items=items, total=total, page=page, page_size=page_size)
 
 
 @router.post(
@@ -194,7 +176,7 @@ def review_question(
     question_id: int,
     payload: QuestionReview,
     db: Session = Depends(get_db),
-    user: User = Depends(require_verifier),
+    user: User = Depends(RoleGuard(UserRole.VERIFIER, UserRole.SUPER_ADMIN)),
 ):
     """
     Проверяет вопрос по предмету текущего верификатора.
@@ -229,14 +211,17 @@ def review_question(
             detail="Вопрос не найден.",
         )
 
-    if q.subject_id != user.subject_id:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                "Вы не можете проверять вопросы "
-                "по другому предмету."
-            ),
-        )
+    if user.role != UserRole.SUPER_ADMIN:
+        if user.subject_id is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Для верификатора не назначен предмет. Обратитесь к SUPER_ADMIN.",
+            )
+        if q.subject_id != user.subject_id:
+            raise HTTPException(
+                status_code=403,
+                detail="Вы не можете проверять вопросы по другому предмету.",
+            )
 
     if q.status != QuestionStatus.VERIFICATION:
         raise HTTPException(
