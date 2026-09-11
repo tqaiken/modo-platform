@@ -53,14 +53,17 @@ router = APIRouter(
 
 require_developer = RoleGuard(
     UserRole.DEVELOPER,
+    UserRole.SUPER_ADMIN,
 )
 
 require_verifier = RoleGuard(
     UserRole.VERIFIER,
+    UserRole.SUPER_ADMIN,
 )
 
 require_curator = RoleGuard(
     UserRole.CURATOR,
+    UserRole.SUPER_ADMIN,
 )
 
 
