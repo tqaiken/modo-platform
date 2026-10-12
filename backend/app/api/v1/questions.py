@@ -5,6 +5,10 @@ from sqlalchemy import or_
 from app.core.database import get_db
 from app.core.security import get_current_user, RoleGuard
 from app.models.user import User, UserRole
+from app.models.question import (
+    Question,
+    QuestionStatus,
+)
 from app.models.question_version import (
     QuestionVersion,
 )
