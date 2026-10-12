@@ -1,4 +1,4 @@
-﻿from datetime import datetime, timezone
+from datetime import datetime, timezone
 
 from fastapi import (
     APIRouter,
@@ -1456,42 +1456,42 @@ def review_variant(
                     f"Комментарий: {payload.comment}"
                 ),
             )
-                            else:
-                                variant.status = (
-                                    VariantStatus.REVISION
-                                )
-                                variant.approved_at = None
+    else:
+        variant.status = (
+            VariantStatus.REVISION
+        )
+        variant.approved_at = None
 
-                                for question in questions:
-                                    previous_question_status = (
-                                        question.status
-                                    )
+        for question in questions:
+            previous_question_status = (
+                question.status
+            )
 
-                                    question.status = (
-                                        QuestionStatus.REVISION
-                                    )
-                                    question.reviewer_id = (
-                                        user.id
-                                    )
-                                    question.reviewed_at = (
-                                        reviewed_at
-                                    )
-                                    question.approved_at = None
+            question.status = (
+                QuestionStatus.REVISION
+            )
+            question.reviewer_id = (
+                user.id
+            )
+            question.reviewed_at = (
+                reviewed_at
+            )
+            question.approved_at = None
 
-                                    create_question_version(
-                                        db=db,
-                                        question=question,
-                                        created_by_id=user.id,
-                                        change_reason="RETURNED",
-                                        change_details=(
-                                            "Вариант возвращён на доработку. "
-                                            "Статус вопроса изменён: "
-                                            f"{previous_question_status.value} "
-                                            "-> "
-                                            f"{question.status.value}. "
-                                            f"Комментарий: {payload.comment}"
-                                        ),
-                                    )
+            create_question_version(
+                db=db,
+                question=question,
+                created_by_id=user.id,
+                change_reason="RETURNED",
+                change_details=(
+                    "Вариант возвращён на доработку. "
+                    "Статус вопроса изменён: "
+                    f"{previous_question_status.value} "
+                    "-> "
+                    f"{question.status.value}. "
+                    f"Комментарий: {payload.comment}"
+                ),
+            )
 
     db.commit()
     db.refresh(variant)
