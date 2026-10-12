@@ -1,6 +1,8 @@
 from datetime import datetime
-from typing import Optional
-
+from typing import (
+    Any,
+    Optional,
+)
 from pydantic import (
     BaseModel,
     Field,
@@ -411,3 +413,27 @@ class LogRead(BaseModel):
     model_config = {
         "from_attributes": True,
     }
+
+class QuestionVersionRead(BaseModel):
+    id: int
+    question_id: int
+    version_number: int
+
+    snapshot: dict[str, Any]
+
+    change_reason: str
+    change_details: str | None
+
+    created_by_id: int
+    created_by: UserRead
+
+    created_at: datetime
+
+    model_config = {
+        "from_attributes": True,
+    }
+
+
+class QuestionVersionList(BaseModel):
+    items: list[QuestionVersionRead]
+    total: int

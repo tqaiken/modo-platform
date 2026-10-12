@@ -222,6 +222,13 @@ class Question(Base):
         cascade="all, delete-orphan",
     )
 
+    versions = relationship(
+        "QuestionVersion",
+        back_populates="question",
+        cascade="all, delete-orphan",
+        order_by="QuestionVersion.version_number",
+    )
+
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.now(timezone.utc),

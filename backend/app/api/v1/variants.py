@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+﻿from datetime import datetime, timezone
 
 from fastapi import (
     APIRouter,
@@ -45,6 +45,9 @@ from app.schemas.variant import (
     VariantUpdate,
 )
 
+from app.services.question_version import (
+    create_question_version,
+)
 
 router = APIRouter(
     prefix="/variants",
@@ -127,7 +130,7 @@ def serialize_queue_item(
 ) -> VariantQueueItem:
     developer_name = get_user_name(
         variant.developer,
-        f"Разработчик #{variant.developer_id}",
+        f"Р Р°Р·СЂР°Р±РѕС‚С‡РёРє #{variant.developer_id}",
     )
 
     return VariantQueueItem(
@@ -155,7 +158,7 @@ def serialize_curator_item(
 ) -> CuratorVariantItem:
     developer_name = get_user_name(
         variant.developer,
-        f"Разработчик #{variant.developer_id}",
+        f"Р Р°Р·СЂР°Р±РѕС‚С‡РёРє #{variant.developer_id}",
     )
 
     return CuratorVariantItem(
@@ -246,7 +249,7 @@ def get_developer_variant_or_404(
     if variant is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Вариант не найден.",
+            detail="Р’Р°СЂРёР°РЅС‚ РЅРµ РЅР°Р№РґРµРЅ.",
         )
 
     return variant
@@ -260,9 +263,9 @@ def require_assigned_subject(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
-                f"Для роли «{role_label}» "
-                "не назначен предмет. Обратитесь "
-                "к супер-администратору."
+                f"Р”Р»СЏ СЂРѕР»Рё В«{role_label}В» "
+                "РЅРµ РЅР°Р·РЅР°С‡РµРЅ РїСЂРµРґРјРµС‚. РћР±СЂР°С‚РёС‚РµСЃСЊ "
+                "Рє СЃСѓРїРµСЂ-Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂСѓ."
             ),
         )
 
@@ -276,7 +279,7 @@ def get_verification_variant_or_404(
 ) -> Variant:
     subject_id = require_assigned_subject(
         user,
-        "Верификатор",
+        "Р’РµСЂРёС„РёРєР°С‚РѕСЂ",
     )
 
     variant = (
@@ -294,8 +297,8 @@ def get_verification_variant_or_404(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=(
-                "Вариант не найден в очереди "
-                "верификации вашего предмета."
+                "Р’Р°СЂРёР°РЅС‚ РЅРµ РЅР°Р№РґРµРЅ РІ РѕС‡РµСЂРµРґРё "
+                "РІРµСЂРёС„РёРєР°С†РёРё РІР°С€РµРіРѕ РїСЂРµРґРјРµС‚Р°."
             ),
         )
 
@@ -308,10 +311,10 @@ def get_curator_variant_or_404(
     allowed_statuses: set[VariantStatus],
 ) -> Variant:
     """
-    Возвращает вариант, доступный куратору.
+    Р’РѕР·РІСЂР°С‰Р°РµС‚ РІР°СЂРёР°РЅС‚, РґРѕСЃС‚СѓРїРЅС‹Р№ РєСѓСЂР°С‚РѕСЂСѓ.
 
-    Куратор имеет глобальный доступ:
-    предмет куратора не проверяется.
+    РљСѓСЂР°С‚РѕСЂ РёРјРµРµС‚ РіР»РѕР±Р°Р»СЊРЅС‹Р№ РґРѕСЃС‚СѓРї:
+    РїСЂРµРґРјРµС‚ РєСѓСЂР°С‚РѕСЂР° РЅРµ РїСЂРѕРІРµСЂСЏРµС‚СЃСЏ.
     """
     variant = (
         db.query(Variant)
@@ -328,8 +331,8 @@ def get_curator_variant_or_404(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=(
-                "Вариант не найден среди "
-                "доступных материалов."
+                "Р’Р°СЂРёР°РЅС‚ РЅРµ РЅР°Р№РґРµРЅ СЃСЂРµРґРё "
+                "РґРѕСЃС‚СѓРїРЅС‹С… РјР°С‚РµСЂРёР°Р»РѕРІ."
             ),
         )
 
@@ -345,8 +348,8 @@ def ensure_variant_is_editable(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                "Вариант можно изменять только "
-                "в статусе DRAFT или REVISION."
+                "Р’Р°СЂРёР°РЅС‚ РјРѕР¶РЅРѕ РёР·РјРµРЅСЏС‚СЊ С‚РѕР»СЊРєРѕ "
+                "РІ СЃС‚Р°С‚СѓСЃРµ DRAFT РёР»Рё REVISION."
             ),
         )
 
@@ -369,8 +372,8 @@ def get_question_in_variant_or_404(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=(
-                "Вопрос не найден "
-                "в указанном варианте."
+                "Р’РѕРїСЂРѕСЃ РЅРµ РЅР°Р№РґРµРЅ "
+                "РІ СѓРєР°Р·Р°РЅРЅРѕРј РІР°СЂРёР°РЅС‚Рµ."
             ),
         )
 
@@ -413,7 +416,7 @@ def get_valid_learning_objective(
     if objective is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Активный ОРО не найден.",
+            detail="РђРєС‚РёРІРЅС‹Р№ РћР Рћ РЅРµ РЅР°Р№РґРµРЅ.",
         )
 
     if objective.subject_id != subject_id:
@@ -422,8 +425,8 @@ def get_valid_learning_objective(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                "Выбранный ОРО относится "
-                "к другому предмету."
+                "Р’С‹Р±СЂР°РЅРЅС‹Р№ РћР Рћ РѕС‚РЅРѕСЃРёС‚СЃСЏ "
+                "Рє РґСЂСѓРіРѕРјСѓ РїСЂРµРґРјРµС‚Сѓ."
             ),
         )
 
@@ -483,8 +486,8 @@ def validate_question_for_submission(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                f"Предмет вопроса №{question_number} "
-                "не совпадает с предметом варианта."
+                f"РџСЂРµРґРјРµС‚ РІРѕРїСЂРѕСЃР° в„–{question_number} "
+                "РЅРµ СЃРѕРІРїР°РґР°РµС‚ СЃ РїСЂРµРґРјРµС‚РѕРј РІР°СЂРёР°РЅС‚Р°."
             ),
         )
 
@@ -497,8 +500,8 @@ def validate_question_for_submission(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                f"В вопросе №{question_number} "
-                "не выбран ОРО."
+                f"Р’ РІРѕРїСЂРѕСЃРµ в„–{question_number} "
+                "РЅРµ РІС‹Р±СЂР°РЅ РћР Рћ."
             ),
         )
 
@@ -517,8 +520,8 @@ def validate_question_for_submission(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                f"ОРО вопроса №{question_number} "
-                "не найден."
+                f"РћР Рћ РІРѕРїСЂРѕСЃР° в„–{question_number} "
+                "РЅРµ РЅР°Р№РґРµРЅ."
             ),
         )
 
@@ -528,8 +531,8 @@ def validate_question_for_submission(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                f"ОРО вопроса №{question_number} "
-                "деактивирован."
+                f"РћР Рћ РІРѕРїСЂРѕСЃР° в„–{question_number} "
+                "РґРµР°РєС‚РёРІРёСЂРѕРІР°РЅ."
             ),
         )
 
@@ -542,8 +545,8 @@ def validate_question_for_submission(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                f"ОРО вопроса №{question_number} "
-                "относится к другому предмету."
+                f"РћР Рћ РІРѕРїСЂРѕСЃР° в„–{question_number} "
+                "РѕС‚РЅРѕСЃРёС‚СЃСЏ Рє РґСЂСѓРіРѕРјСѓ РїСЂРµРґРјРµС‚Сѓ."
             ),
         )
 
@@ -553,8 +556,8 @@ def validate_question_for_submission(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                f"В вопросе №{question_number} "
-                "не выбран когнитивный уровень."
+                f"Р’ РІРѕРїСЂРѕСЃРµ в„–{question_number} "
+                "РЅРµ РІС‹Р±СЂР°РЅ РєРѕРіРЅРёС‚РёРІРЅС‹Р№ СѓСЂРѕРІРµРЅСЊ."
             ),
         )
 
@@ -566,9 +569,9 @@ def validate_question_for_submission(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                f"В вопросе №{question_number} "
-                "не заполнен текст "
-                "на казахском языке."
+                f"Р’ РІРѕРїСЂРѕСЃРµ в„–{question_number} "
+                "РЅРµ Р·Р°РїРѕР»РЅРµРЅ С‚РµРєСЃС‚ "
+                "РЅР° РєР°Р·Р°С…СЃРєРѕРј СЏР·С‹РєРµ."
             ),
         )
 
@@ -580,9 +583,9 @@ def validate_question_for_submission(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                f"В вопросе №{question_number} "
-                "не заполнен текст "
-                "на русском языке."
+                f"Р’ РІРѕРїСЂРѕСЃРµ в„–{question_number} "
+                "РЅРµ Р·Р°РїРѕР»РЅРµРЅ С‚РµРєСЃС‚ "
+                "РЅР° СЂСѓСЃСЃРєРѕРј СЏР·С‹РєРµ."
             ),
         )
 
@@ -594,9 +597,9 @@ def validate_question_for_submission(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                f"Варианты ответа вопроса "
-                f"№{question_number} имеют "
-                "некорректный формат."
+                f"Р’Р°СЂРёР°РЅС‚С‹ РѕС‚РІРµС‚Р° РІРѕРїСЂРѕСЃР° "
+                f"в„–{question_number} РёРјРµСЋС‚ "
+                "РЅРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ С„РѕСЂРјР°С‚."
             ),
         )
 
@@ -606,9 +609,9 @@ def validate_question_for_submission(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                f"В вопросе №{question_number} "
-                "должно быть минимум "
-                "четыре ответа."
+                f"Р’ РІРѕРїСЂРѕСЃРµ в„–{question_number} "
+                "РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ РјРёРЅРёРјСѓРј "
+                "С‡РµС‚С‹СЂРµ РѕС‚РІРµС‚Р°."
             ),
         )
 
@@ -625,9 +628,9 @@ def validate_question_for_submission(
                     status.HTTP_422_UNPROCESSABLE_ENTITY
                 ),
                 detail=(
-                    f"Ответ №{option_index} "
-                    f"в вопросе №{question_number} "
-                    "имеет некорректный формат."
+                    f"РћС‚РІРµС‚ в„–{option_index} "
+                    f"РІ РІРѕРїСЂРѕСЃРµ в„–{question_number} "
+                    "РёРјРµРµС‚ РЅРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ С„РѕСЂРјР°С‚."
                 ),
             )
 
@@ -641,9 +644,9 @@ def validate_question_for_submission(
                     status.HTTP_422_UNPROCESSABLE_ENTITY
                 ),
                 detail=(
-                    f"В вопросе №{question_number} "
-                    "один из ответов "
-                    "не имеет обозначения."
+                    f"Р’ РІРѕРїСЂРѕСЃРµ в„–{question_number} "
+                    "РѕРґРёРЅ РёР· РѕС‚РІРµС‚РѕРІ "
+                    "РЅРµ РёРјРµРµС‚ РѕР±РѕР·РЅР°С‡РµРЅРёСЏ."
                 ),
             )
 
@@ -665,9 +668,9 @@ def validate_question_for_submission(
                     status.HTTP_422_UNPROCESSABLE_ENTITY
                 ),
                 detail=(
-                    f"Ответ {option_key} "
-                    f"в вопросе №{question_number} "
-                    "не заполнен на двух языках."
+                    f"РћС‚РІРµС‚ {option_key} "
+                    f"РІ РІРѕРїСЂРѕСЃРµ в„–{question_number} "
+                    "РЅРµ Р·Р°РїРѕР»РЅРµРЅ РЅР° РґРІСѓС… СЏР·С‹РєР°С…."
                 ),
             )
 
@@ -686,8 +689,8 @@ def validate_question_for_submission(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                f"В вопросе №{question_number} "
-                "обозначения ответов повторяются."
+                f"Р’ РІРѕРїСЂРѕСЃРµ в„–{question_number} "
+                "РѕР±РѕР·РЅР°С‡РµРЅРёСЏ РѕС‚РІРµС‚РѕРІ РїРѕРІС‚РѕСЂСЏСЋС‚СЃСЏ."
             ),
         )
 
@@ -697,9 +700,9 @@ def validate_question_for_submission(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                f"В вопросе №{question_number} "
-                "должен быть выбран ровно "
-                "один правильный ответ."
+                f"Р’ РІРѕРїСЂРѕСЃРµ в„–{question_number} "
+                "РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ РІС‹Р±СЂР°РЅ СЂРѕРІРЅРѕ "
+                "РѕРґРёРЅ РїСЂР°РІРёР»СЊРЅС‹Р№ РѕС‚РІРµС‚."
             ),
         )
 
@@ -750,7 +753,7 @@ def create_variant(
 ):
     subject_id = require_assigned_subject(
         user,
-        "Разработчик",
+        "Р Р°Р·СЂР°Р±РѕС‚С‡РёРє",
     )
 
     variant = Variant(
@@ -961,7 +964,7 @@ def get_verification_queue(
 ):
     subject_id = require_assigned_subject(
         user,
-        "Верификатор",
+        "Р’РµСЂРёС„РёРєР°С‚РѕСЂ",
     )
 
     query = (
@@ -1030,10 +1033,10 @@ def get_curator_queue(
     ),
 ):
     """
-    Возвращает все утверждённые варианты.
+    Р’РѕР·РІСЂР°С‰Р°РµС‚ РІСЃРµ СѓС‚РІРµСЂР¶РґС‘РЅРЅС‹Рµ РІР°СЂРёР°РЅС‚С‹.
 
-    Куратор имеет глобальный доступ.
-    Фильтр предмета является необязательным.
+    РљСѓСЂР°С‚РѕСЂ РёРјРµРµС‚ РіР»РѕР±Р°Р»СЊРЅС‹Р№ РґРѕСЃС‚СѓРї.
+    Р¤РёР»СЊС‚СЂ РїСЂРµРґРјРµС‚Р° СЏРІР»СЏРµС‚СЃСЏ РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅС‹Рј.
     """
     query = (
         db.query(Variant)
@@ -1110,10 +1113,10 @@ def get_variant_bank(
     ),
 ):
     """
-    Возвращает все варианты банка.
+    Р’РѕР·РІСЂР°С‰Р°РµС‚ РІСЃРµ РІР°СЂРёР°РЅС‚С‹ Р±Р°РЅРєР°.
 
-    Куратор имеет глобальный доступ.
-    Фильтр предмета является необязательным.
+    РљСѓСЂР°С‚РѕСЂ РёРјРµРµС‚ РіР»РѕР±Р°Р»СЊРЅС‹Р№ РґРѕСЃС‚СѓРї.
+    Р¤РёР»СЊС‚СЂ РїСЂРµРґРјРµС‚Р° СЏРІР»СЏРµС‚СЃСЏ РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅС‹Рј.
     """
     query = (
         db.query(Variant)
@@ -1195,15 +1198,15 @@ def submit_variant_for_verification(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                "У варианта не указан класс. "
-                "Выберите класс перед отправкой "
-                "на верификацию."
+                "РЈ РІР°СЂРёР°РЅС‚Р° РЅРµ СѓРєР°Р·Р°РЅ РєР»Р°СЃСЃ. "
+                "Р’С‹Р±РµСЂРёС‚Рµ РєР»Р°СЃСЃ РїРµСЂРµРґ РѕС‚РїСЂР°РІРєРѕР№ "
+                "РЅР° РІРµСЂРёС„РёРєР°С†РёСЋ."
             ),
         )
 
     subject_id = require_assigned_subject(
         user,
-        "Разработчик",
+        "Р Р°Р·СЂР°Р±РѕС‚С‡РёРє",
     )
 
     if variant.subject_id is None:
@@ -1212,7 +1215,7 @@ def submit_variant_for_verification(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                "У варианта не назначен предмет."
+                "РЈ РІР°СЂРёР°РЅС‚Р° РЅРµ РЅР°Р·РЅР°С‡РµРЅ РїСЂРµРґРјРµС‚."
             ),
         )
 
@@ -1225,8 +1228,8 @@ def submit_variant_for_verification(
                 status.HTTP_403_FORBIDDEN
             ),
             detail=(
-                "Предмет варианта не совпадает "
-                "с предметом разработчика."
+                "РџСЂРµРґРјРµС‚ РІР°СЂРёР°РЅС‚Р° РЅРµ СЃРѕРІРїР°РґР°РµС‚ "
+                "СЃ РїСЂРµРґРјРµС‚РѕРј СЂР°Р·СЂР°Р±РѕС‚С‡РёРєР°."
             ),
         )
 
@@ -1244,8 +1247,8 @@ def submit_variant_for_verification(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                "Нельзя отправить пустой вариант. "
-                "Добавьте хотя бы один вопрос."
+                "РќРµР»СЊР·СЏ РѕС‚РїСЂР°РІРёС‚СЊ РїСѓСЃС‚РѕР№ РІР°СЂРёР°РЅС‚. "
+                "Р”РѕР±Р°РІСЊС‚Рµ С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ РІРѕРїСЂРѕСЃ."
             ),
         )
 
@@ -1275,6 +1278,10 @@ def submit_variant_for_verification(
     variant.published_at = None
 
     for question in questions:
+        previous_question_status = (
+            question.status
+        )
+
         question.status = (
             QuestionStatus.VERIFICATION
         )
@@ -1284,6 +1291,20 @@ def submit_variant_for_verification(
         question.reviewer_id = None
         question.reviewed_at = None
         question.approved_at = None
+
+        create_question_version(
+            db=db,
+            question=question,
+            created_by_id=user.id,
+            change_reason="SUBMITTED",
+            change_details=(
+                "Вариант отправлен на верификацию. "
+                "Статус вопроса изменён: "
+                f"{previous_question_status.value} "
+                "-> "
+                f"{question.status.value}."
+            ),
+        )
 
     db.commit()
     db.refresh(variant)
@@ -1331,8 +1352,8 @@ def get_verification_questions(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                "В отправленном варианте "
-                "не найдены вопросы."
+                "Р’ РѕС‚РїСЂР°РІР»РµРЅРЅРѕРј РІР°СЂРёР°РЅС‚Рµ "
+                "РЅРµ РЅР°Р№РґРµРЅС‹ РІРѕРїСЂРѕСЃС‹."
             ),
         )
 
@@ -1381,7 +1402,7 @@ def review_variant(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                "Нельзя проверить пустой вариант."
+                "РќРµР»СЊР·СЏ РїСЂРѕРІРµСЂРёС‚СЊ РїСѓСЃС‚РѕР№ РІР°СЂРёР°РЅС‚."
             ),
         )
 
@@ -1404,6 +1425,10 @@ def review_variant(
         )
 
         for question in questions:
+            previous_question_status = (
+                question.status
+            )
+
             question.status = (
                 QuestionStatus.IN_BANK
             )
@@ -1416,11 +1441,53 @@ def review_variant(
             question.approved_at = (
                 reviewed_at
             )
-    else:
-        variant.status = (
-            VariantStatus.REVISION
-        )
-        variant.approved_at = None
+
+            create_question_version(
+                db=db,
+                question=question,
+                created_by_id=user.id,
+                change_reason="APPROVED",
+                change_details=(
+                    "Вариант утверждён верификатором. "
+                    "Статус вопроса изменён: "
+                    f"{previous_question_status.value} "
+                    "-> "
+                    f"{question.status.value}. "
+                    f"Комментарий: {payload.comment}"
+                ),
+            )
+        else:
+        for question in questions:
+            previous_question_status = (
+                question.status
+            )
+
+            question.status = (
+                QuestionStatus.REVISION
+            )
+            question.reviewer_id = (
+                user.id
+            )
+            question.reviewed_at = (
+                reviewed_at
+            )
+            question.approved_at = None
+
+            create_question_version(
+                db=db,
+                question=question,
+                created_by_id=user.id,
+                change_reason="RETURNED",
+                change_details=(
+                    "Вариант возвращён на доработку. "
+                    "Статус вопроса изменён: "
+                    f"{previous_question_status.value} "
+                    "-> "
+                    f"{question.status.value}. "
+                    f"Комментарий: {payload.comment}"
+                ),
+            )
+            variant.approved_at = None
 
         for question in questions:
             question.status = (
@@ -1502,7 +1569,7 @@ def get_curator_questions(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                "В варианте не найдены вопросы."
+                "Р’ РІР°СЂРёР°РЅС‚Рµ РЅРµ РЅР°Р№РґРµРЅС‹ РІРѕРїСЂРѕСЃС‹."
             ),
         )
 
@@ -1545,8 +1612,8 @@ def publish_variant_to_bank(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                "Нельзя опубликовать вариант "
-                "без указанного класса."
+                "РќРµР»СЊР·СЏ РѕРїСѓР±Р»РёРєРѕРІР°С‚СЊ РІР°СЂРёР°РЅС‚ "
+                "Р±РµР· СѓРєР°Р·Р°РЅРЅРѕРіРѕ РєР»Р°СЃСЃР°."
             ),
         )
 
@@ -1564,8 +1631,8 @@ def publish_variant_to_bank(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                "Нельзя опубликовать "
-                "пустой вариант."
+                "РќРµР»СЊР·СЏ РѕРїСѓР±Р»РёРєРѕРІР°С‚СЊ "
+                "РїСѓСЃС‚РѕР№ РІР°СЂРёР°РЅС‚."
             ),
         )
 
@@ -1579,10 +1646,10 @@ def publish_variant_to_bank(
                     status.HTTP_422_UNPROCESSABLE_ENTITY
                 ),
                 detail=(
-                    f"Предмет вопроса "
-                    f"№{question.order_number} "
-                    "не совпадает с предметом "
-                    "варианта."
+                    f"РџСЂРµРґРјРµС‚ РІРѕРїСЂРѕСЃР° "
+                    f"в„–{question.order_number} "
+                    "РЅРµ СЃРѕРІРїР°РґР°РµС‚ СЃ РїСЂРµРґРјРµС‚РѕРј "
+                    "РІР°СЂРёР°РЅС‚Р°."
                 ),
             )
 
@@ -1592,9 +1659,9 @@ def publish_variant_to_bank(
                     status.HTTP_422_UNPROCESSABLE_ENTITY
                 ),
                 detail=(
-                    f"Вопрос №{question.order_number} "
-                    "не был утверждён "
-                    "верификатором."
+                    f"Р’РѕРїСЂРѕСЃ в„–{question.order_number} "
+                    "РЅРµ Р±С‹Р» СѓС‚РІРµСЂР¶РґС‘РЅ "
+                    "РІРµСЂРёС„РёРєР°С‚РѕСЂРѕРј."
                 ),
             )
 
@@ -1614,8 +1681,27 @@ def publish_variant_to_bank(
     )
 
     for question in questions:
+        previous_question_status = (
+            question.status
+        )
+
         question.status = (
             QuestionStatus.IN_BANK
+        )
+
+        create_question_version(
+            db=db,
+            question=question,
+            created_by_id=user.id,
+            change_reason="PUBLISHED",
+            change_details=(
+                "Вариант опубликован куратором. "
+                "Статус вопроса: "
+                f"{previous_question_status.value} "
+                "-> "
+                f"{question.status.value}. "
+                f"Комментарий: {payload.comment}"
+            ),
         )
 
     db.commit()
@@ -1715,7 +1801,7 @@ def create_question_in_variant(
 
     subject_id = require_assigned_subject(
         user,
-        "Разработчик",
+        "Р Р°Р·СЂР°Р±РѕС‚С‡РёРє",
     )
 
     if variant.subject_id is None:
@@ -1724,7 +1810,7 @@ def create_question_in_variant(
                 status.HTTP_422_UNPROCESSABLE_ENTITY
             ),
             detail=(
-                "У варианта не назначен предмет."
+                "РЈ РІР°СЂРёР°РЅС‚Р° РЅРµ РЅР°Р·РЅР°С‡РµРЅ РїСЂРµРґРјРµС‚."
             ),
         )
 
@@ -1737,8 +1823,8 @@ def create_question_in_variant(
                 status.HTTP_403_FORBIDDEN
             ),
             detail=(
-                "Предмет варианта не совпадает "
-                "с предметом разработчика."
+                "РџСЂРµРґРјРµС‚ РІР°СЂРёР°РЅС‚Р° РЅРµ СЃРѕРІРїР°РґР°РµС‚ "
+                "СЃ РїСЂРµРґРјРµС‚РѕРј СЂР°Р·СЂР°Р±РѕС‚С‡РёРєР°."
             ),
         )
 
@@ -1790,7 +1876,7 @@ def create_question_in_variant(
         author_id=user.id,
         reviewer_id=None,
         status=QuestionStatus.DRAFT,
-        title=f"Вопрос {order_number}",
+        title=f"Р’РѕРїСЂРѕСЃ {order_number}",
         body=(
             payload.question_text_ru
         ),
@@ -1816,6 +1902,18 @@ def create_question_in_variant(
     )
 
     db.add(question)
+    db.flush()
+
+    create_question_version(
+        db=db,
+        question=question,
+        created_by_id=user.id,
+        change_reason="CREATED",
+        change_details=(
+            "Р’РѕРїСЂРѕСЃ СЃРѕР·РґР°РЅ РІРЅСѓС‚СЂРё РІР°СЂРёР°РЅС‚Р° "
+            f"#{variant.id}."
+        ),
+    )
 
     variant.updated_at = func.now()
 
@@ -1870,8 +1968,8 @@ def update_question_in_variant(
                 status.HTTP_400_BAD_REQUEST
             ),
             detail=(
-                "Не переданы данные "
-                "для изменения."
+                "РќРµ РїРµСЂРµРґР°РЅС‹ РґР°РЅРЅС‹Рµ "
+                "РґР»СЏ РёР·РјРµРЅРµРЅРёСЏ."
             ),
         )
 
@@ -1885,8 +1983,8 @@ def update_question_in_variant(
                     status.HTTP_422_UNPROCESSABLE_ENTITY
                 ),
                 detail=(
-                    "У варианта не назначен "
-                    "предмет."
+                    "РЈ РІР°СЂРёР°РЅС‚Р° РЅРµ РЅР°Р·РЅР°С‡РµРЅ "
+                    "РїСЂРµРґРјРµС‚."
                 ),
             )
 
@@ -2004,6 +2102,21 @@ def update_question_in_variant(
                 "explanation_ru"
             ]
         )
+
+    changed_fields = sorted(
+        update_data.keys()
+    )
+
+    create_question_version(
+        db=db,
+        question=question,
+        created_by_id=user.id,
+        change_reason="UPDATED",
+        change_details=(
+            "РР·РјРµРЅРµРЅС‹ РїРѕР»СЏ: "
+            + ", ".join(changed_fields)
+        ),
+    )
 
     variant.updated_at = func.now()
 
@@ -2127,8 +2240,8 @@ def update_variant(
                 status.HTTP_400_BAD_REQUEST
             ),
             detail=(
-                "Не переданы данные "
-                "для изменения."
+                "РќРµ РїРµСЂРµРґР°РЅС‹ РґР°РЅРЅС‹Рµ "
+                "РґР»СЏ РёР·РјРµРЅРµРЅРёСЏ."
             ),
         )
 
@@ -2179,8 +2292,8 @@ def delete_variant(
                 status.HTTP_400_BAD_REQUEST
             ),
             detail=(
-                "Удалить можно только вариант "
-                "со статусом DRAFT."
+                "РЈРґР°Р»РёС‚СЊ РјРѕР¶РЅРѕ С‚РѕР»СЊРєРѕ РІР°СЂРёР°РЅС‚ "
+                "СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј DRAFT."
             ),
         )
 

@@ -30,6 +30,9 @@ from app.models.log import (
     LogAction,
 )
 
+from app.models.question_version import (
+    QuestionVersion,
+)
 
 __all__ = [
     "User",
@@ -46,4 +49,5 @@ __all__ = [
     "ReviewComment",
     "QuestionLog",
     "LogAction",
+    "QuestionVersion",
 ]
