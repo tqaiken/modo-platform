@@ -42,6 +42,12 @@ class Variant(Base):
         nullable=True,
     )
 
+    grade = Column(
+    Integer,
+    nullable=True,
+    index=True,
+    )
+
     subject_id = Column(
         Integer,
         ForeignKey(

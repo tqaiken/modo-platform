@@ -46,6 +46,7 @@ interface VariantQueueItem {
   id: number;
   title: string;
   description: string | null;
+  grade: number | null;
   subject_id: number | null;
   developer_id: number;
   developer_name: string;
@@ -576,63 +577,49 @@ export default function VerifierPage() {
                   }}
                   className="flex w-full items-start justify-between gap-4 text-left"
                 >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-xs text-gray-400">
-                        Вариант #{variant.id}
-                      </span>
+              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-500">
+                <span className="inline-flex items-center gap-1.5">
+                  <BookOpen className="h-3.5 w-3.5" />
 
-                      <span className="badge bg-blue-100 text-blue-800">
-                        На верификации
-                      </span>
-                    </div>
+                  {getSubjectTitle(
+                    variant.subject_id
+                  )}
+                </span>
 
-                    <h2 className="mt-2 text-lg font-semibold text-gray-900">
-                      {variant.title}
-                    </h2>
+                <span>
+                  Класс:{" "}
+                  {variant.grade === null
+                    ? "не указан"
+                    : variant.grade}
+                </span>
 
-                    {variant.description && (
-                      <p className="mt-1 line-clamp-2 text-sm text-gray-600">
-                        {variant.description}
-                      </p>
+                <span className="inline-flex items-center gap-1.5">
+                  <FileQuestion className="h-3.5 w-3.5" />
+
+                  Вопросов:{" "}
+                  {variant.question_count}
+                </span>
+
+                <span>
+                  Разработчик:{" "}
+                  {variant.developer_name}
+                </span>
+
+                {variant.submitted_at && (
+                  <span>
+                    Отправлен:{" "}
+                    {format(
+                      new Date(
+                        variant.submitted_at
+                      ),
+                      "d MMM yyyy, HH:mm",
+                      {
+                        locale: ru,
+                      }
                     )}
-
-                    <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-gray-500">
-                      <span className="inline-flex items-center gap-1.5">
-                        <BookOpen className="h-3.5 w-3.5" />
-                        {getSubjectTitle(
-                          variant.subject_id
-                        )}
-                      </span>
-
-                      <span className="inline-flex items-center gap-1.5">
-                        <FileQuestion className="h-3.5 w-3.5" />
-                        Вопросов:{" "}
-                        {variant.question_count}
-                      </span>
-
-                      <span>
-                        Разработчик:{" "}
-                        {variant.developer_name}
-                      </span>
-
-                      {variant.submitted_at && (
-                        <span>
-                          Отправлен:{" "}
-                          {format(
-                            new Date(
-                              variant.submitted_at
-                            ),
-                            "d MMM yyyy, HH:mm",
-                            {
-                              locale: ru,
-                            }
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
+                  </span>
+                )}
+              </div>
                   {isExpanded ? (
                     <ChevronUp className="mt-1 h-5 w-5 shrink-0 text-gray-400" />
                   ) : (

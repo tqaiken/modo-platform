@@ -32,6 +32,7 @@ interface Variant {
   id: number;
   title: string;
   description: string | null;
+  grade: number | null;
   subject_id: number | null;
   developer_id: number;
   status: VariantStatus;
@@ -333,6 +334,7 @@ export default function DeveloperPage() {
                   <TableHeader>ID</TableHeader>
                   <TableHeader>Вариант</TableHeader>
                   <TableHeader>Предмет</TableHeader>
+                  <TableHeader>Класс</TableHeader>
                   <TableHeader>Вопросы</TableHeader>
                   <TableHeader>Статус</TableHeader>
                   <TableHeader>Обновлён</TableHeader>
@@ -369,6 +371,12 @@ export default function DeveloperPage() {
                       {variant.subject_id === null
                         ? "Не назначен"
                         : `Предмет #${variant.subject_id}`}
+                    </td>
+
+                    <td className="whitespace-nowrap px-6 py-4 text-sm font-medium text-gray-700">
+                      {variant.grade === null
+                        ? "Не указан"
+                        : `${variant.grade} класс`}
                     </td>
 
                     <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-600">

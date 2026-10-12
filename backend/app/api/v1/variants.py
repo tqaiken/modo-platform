@@ -96,6 +96,7 @@ def serialize_variant(
         id=variant.id,
         title=variant.title,
         description=variant.description,
+        grade=variant.grade,
         subject_id=variant.subject_id,
         developer_id=variant.developer_id,
         reviewer_id=variant.reviewer_id,
@@ -133,6 +134,7 @@ def serialize_queue_item(
         id=variant.id,
         title=variant.title,
         description=variant.description,
+        grade=variant.grade,
         subject_id=variant.subject_id,
         developer_id=variant.developer_id,
         developer_name=developer_name or "",
@@ -160,6 +162,7 @@ def serialize_curator_item(
         id=variant.id,
         title=variant.title,
         description=variant.description,
+        grade=variant.grade,
         subject_id=variant.subject_id,
         developer_id=variant.developer_id,
         developer_name=developer_name or "",
@@ -753,6 +756,7 @@ def create_variant(
     variant = Variant(
         title=payload.title,
         description=payload.description,
+        grade=payload.grade,
         developer_id=user.id,
         subject_id=subject_id,
         status=VariantStatus.DRAFT,
@@ -1078,19 +1082,6 @@ def get_curator_queue(
     )
 
 
-    return CuratorVariantList(
-        items=[
-            serialize_curator_item(
-                variant
-            )
-            for variant in variants
-        ],
-        total=total,
-        page=page,
-        page_size=page_size,
-    )
-
-
 @router.get(
     "/bank",
     response_model=CuratorVariantList,
@@ -1198,6 +1189,18 @@ def submit_variant_for_verification(
         variant
     )
 
+    if variant.grade is None:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_422_UNPROCESSABLE_ENTITY
+            ),
+            detail=(
+                "У варианта не указан класс. "
+                "Выберите класс перед отправкой "
+                "на верификацию."
+            ),
+        )
+
     subject_id = require_assigned_subject(
         user,
         "Разработчик",
@@ -1253,17 +1256,14 @@ def submit_variant_for_verification(
             variant,
         )
 
-    submitted_at = (
-        datetime.now(timezone.utc)
+    submitted_at = datetime.now(
+        timezone.utc
     )
 
     variant.status = (
         VariantStatus.VERIFICATION
     )
-
-    variant.submitted_at = (
-        submitted_at
-    )
+    variant.submitted_at = submitted_at
 
     variant.reviewer_id = None
     variant.review_comment = None
@@ -1278,11 +1278,9 @@ def submit_variant_for_verification(
         question.status = (
             QuestionStatus.VERIFICATION
         )
-
         question.submitted_at = (
             submitted_at
         )
-
         question.reviewer_id = None
         question.reviewed_at = None
         question.approved_at = None
@@ -1387,8 +1385,8 @@ def review_variant(
             ),
         )
 
-    reviewed_at = (
-        datetime.now(timezone.utc)
+    reviewed_at = datetime.now(
+        timezone.utc
     )
 
     variant.reviewer_id = user.id
@@ -1401,7 +1399,6 @@ def review_variant(
         variant.status = (
             VariantStatus.APPROVED
         )
-
         variant.approved_at = (
             reviewed_at
         )
@@ -1423,7 +1420,6 @@ def review_variant(
         variant.status = (
             VariantStatus.REVISION
         )
-
         variant.approved_at = None
 
         for question in questions:
@@ -1444,6 +1440,7 @@ def review_variant(
     return VariantReviewResult(
         id=variant.id,
         title=variant.title,
+        grade=variant.grade,
         status=variant.status,
         reviewer_id=variant.reviewer_id,
         reviewer_name=get_user_name(
@@ -1542,6 +1539,17 @@ def publish_variant_to_bank(
         )
     )
 
+    if variant.grade is None:
+        raise HTTPException(
+            status_code=(
+                status.HTTP_422_UNPROCESSABLE_ENTITY
+            ),
+            detail=(
+                "Нельзя опубликовать вариант "
+                "без указанного класса."
+            ),
+        )
+
     questions = (
         get_variant_questions_query(
             db,
@@ -1590,8 +1598,8 @@ def publish_variant_to_bank(
                 ),
             )
 
-    published_at = (
-        datetime.now(timezone.utc)
+    published_at = datetime.now(
+        timezone.utc
     )
 
     variant.status = (
@@ -1616,6 +1624,7 @@ def publish_variant_to_bank(
     return VariantPublishResult(
         id=variant.id,
         title=variant.title,
+        grade=variant.grade,
         status=variant.status,
         curator_id=variant.curator_id,
         curator_name=get_user_name(

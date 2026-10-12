@@ -6,6 +6,7 @@ import {
 import {
   ArrowLeft,
   BookOpen,
+  GraduationCap,
   Save,
 } from "lucide-react";
 import {
@@ -31,6 +32,7 @@ interface CreatedVariant {
   id: number;
   title: string;
   description: string | null;
+  grade: number;
   subject_id: number | null;
   developer_id: number;
   status: "DRAFT";
@@ -40,6 +42,7 @@ interface CreatedVariant {
   submitted_at: string | null;
   reviewed_at: string | null;
   approved_at: string | null;
+  published_at: string | null;
 }
 
 
@@ -52,15 +55,58 @@ interface ApiError {
 }
 
 
+const GRADES = Array.from(
+  {
+    length: 12,
+  },
+  (_, index) => index + 1
+);
+
+
 function getErrorMessage(
   error: unknown,
   fallback: string
 ): string {
   const apiError = error as ApiError;
-  const detail = apiError.response?.data?.detail;
+  const detail =
+    apiError.response?.data?.detail;
 
   if (typeof detail === "string") {
     return detail;
+  }
+
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        if (
+          typeof item === "object" &&
+          item !== null &&
+          "msg" in item
+        ) {
+          return String(item.msg);
+        }
+
+        return String(item);
+      })
+      .join("; ");
+  }
+
+  if (
+    typeof detail === "object" &&
+    detail !== null &&
+    "message" in detail
+  ) {
+    return String(
+      (
+        detail as {
+          message: unknown;
+        }
+      ).message
+    );
+  }
+
+  if (error instanceof Error) {
+    return error.message;
   }
 
   return fallback;
@@ -71,52 +117,76 @@ export default function VariantCreatePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
 
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
+  const [title, setTitle] =
+    useState("");
 
-  const [subjectTitle, setSubjectTitle] =
-    useState("Загрузка...");
+  const [description, setDescription] =
+    useState("");
 
-  const [loadingSubject, setLoadingSubject] =
-    useState(true);
+  const [grade, setGrade] =
+    useState("");
 
-  const [saving, setSaving] = useState(false);
+  const [
+    subjectTitle,
+    setSubjectTitle,
+  ] = useState("Загрузка...");
+
+  const [
+    loadingSubject,
+    setLoadingSubject,
+  ] = useState(true);
+
+  const [saving, setSaving] =
+    useState(false);
 
 
   useEffect(() => {
-    const loadSubject = async (): Promise<void> => {
-      if (user?.subject_id === null) {
-        setSubjectTitle("Предмет не назначен");
-        setLoadingSubject(false);
-        return;
-      }
+    const loadSubject =
+      async (): Promise<void> => {
+        if (
+          user?.subject_id === null ||
+          user?.subject_id === undefined
+        ) {
+          setSubjectTitle(
+            "Предмет не назначен"
+          );
 
-      try {
-        const response = await api.get<Subject[]>(
-          "/api/v1/subjects"
-        );
+          setLoadingSubject(false);
+          return;
+        }
 
-        const subject = response.data.find(
-          (item) => item.id === user?.subject_id
-        );
+        try {
+          const response =
+            await api.get<Subject[]>(
+              "/api/v1/subjects"
+            );
 
-        setSubjectTitle(
-          subject?.title ??
-            `Предмет #${user?.subject_id}`
-        );
-      } catch (error: unknown) {
-        setSubjectTitle("Не удалось загрузить предмет");
+          const subject =
+            response.data.find(
+              (item) =>
+                item.id ===
+                user.subject_id
+            );
 
-        toast.error(
-          getErrorMessage(
-            error,
-            "Не удалось загрузить предмет разработчика."
-          )
-        );
-      } finally {
-        setLoadingSubject(false);
-      }
-    };
+          setSubjectTitle(
+            subject?.title ??
+              `Предмет #${user.subject_id}`
+          );
+        } catch (error: unknown) {
+          setSubjectTitle(
+            "Не удалось загрузить предмет"
+          );
+
+          toast.error(
+            getErrorMessage(
+              error,
+              "Не удалось загрузить предмет разработчика."
+            )
+          );
+        } finally {
+          setLoadingSubject(false);
+        }
+      };
 
     void loadSubject();
   }, [user?.subject_id]);
@@ -127,26 +197,69 @@ export default function VariantCreatePage() {
   ): Promise<void> => {
     event.preventDefault();
 
-    if (user?.subject_id === null) {
+    if (
+      user?.subject_id === null ||
+      user?.subject_id === undefined
+    ) {
       toast.error(
         "Для вашей учётной записи не назначен предмет."
       );
+
+      return;
+    }
+
+    const normalizedTitle =
+      title.trim();
+
+    if (normalizedTitle.length < 2) {
+      toast.error(
+        "Название варианта должно содержать минимум два символа."
+      );
+
+      return;
+    }
+
+    if (!grade) {
+      toast.error(
+        "Выберите класс."
+      );
+
+      return;
+    }
+
+    const numericGrade =
+      Number(grade);
+
+    if (
+      !Number.isInteger(numericGrade) ||
+      numericGrade < 1 ||
+      numericGrade > 12
+    ) {
+      toast.error(
+        "Класс должен быть числом от 1 до 12."
+      );
+
       return;
     }
 
     setSaving(true);
 
     try {
-      const response = await api.post<CreatedVariant>(
-        "/api/v1/variants",
-        {
-          title: title.trim(),
-          description:
-            description.trim() || null,
-        }
-      );
+      const response =
+        await api.post<CreatedVariant>(
+          "/api/v1/variants",
+          {
+            title: normalizedTitle,
+            description:
+              description.trim() ||
+              null,
+            grade: numericGrade,
+          }
+        );
 
-      toast.success("Вариант создан.");
+      toast.success(
+        `${numericGrade} класс: вариант создан.`
+      );
 
       navigate(
         `/variants/${response.data.id}`,
@@ -168,7 +281,15 @@ export default function VariantCreatePage() {
 
 
   const subjectMissing =
-    user?.subject_id === null;
+    user?.subject_id === null ||
+    user?.subject_id === undefined;
+
+  const formInvalid =
+    saving ||
+    loadingSubject ||
+    subjectMissing ||
+    title.trim().length < 2 ||
+    !grade;
 
 
   return (
@@ -189,14 +310,16 @@ export default function VariantCreatePage() {
         </h1>
 
         <p className="mt-1 text-sm text-gray-500">
-          Создайте вариант, затем добавьте в него вопросы
+          Укажите класс и создайте вариант,
+          затем добавьте в него вопросы
         </p>
       </div>
 
       {subjectMissing && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          Для вашей учётной записи не назначен предмет.
-          Обратитесь к супер-администратору.
+          Для вашей учётной записи не назначен
+          предмет. Обратитесь к
+          супер-администратору.
         </div>
       )}
 
@@ -226,8 +349,62 @@ export default function VariantCreatePage() {
           </div>
 
           <p className="mt-1.5 text-xs text-gray-500">
-            Предмет назначается супер-администратором
-            и не может быть изменён разработчиком.
+            Предмет назначается
+            супер-администратором и не может
+            быть изменён разработчиком.
+          </p>
+        </div>
+
+        <div>
+          <label
+            htmlFor="grade"
+            className="mb-1.5 block text-sm font-medium text-gray-700"
+          >
+            Класс
+            <span className="ml-1 text-red-500">
+              *
+            </span>
+          </label>
+
+          <div className="relative">
+            <GraduationCap className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+
+            <select
+              id="grade"
+              value={grade}
+              onChange={(event) => {
+                setGrade(
+                  event.target.value
+                );
+              }}
+              className="input-field pl-10"
+              disabled={
+                saving ||
+                subjectMissing
+              }
+              required
+            >
+              <option value="">
+                Выберите класс
+              </option>
+
+              {GRADES.map(
+                (gradeNumber) => (
+                  <option
+                    key={gradeNumber}
+                    value={gradeNumber}
+                  >
+                    {gradeNumber} класс
+                  </option>
+                )
+              )}
+            </select>
+          </div>
+
+          <p className="mt-1.5 text-xs text-gray-500">
+            Класс применяется ко всему варианту
+            и будет отображаться в очередях,
+            банке, PDF и Excel.
           </p>
         </div>
 
@@ -237,6 +414,9 @@ export default function VariantCreatePage() {
             className="mb-1.5 block text-sm font-medium text-gray-700"
           >
             Название варианта
+            <span className="ml-1 text-red-500">
+              *
+            </span>
           </label>
 
           <input
@@ -244,19 +424,23 @@ export default function VariantCreatePage() {
             type="text"
             value={title}
             onChange={(event) => {
-              setTitle(event.target.value);
+              setTitle(
+                event.target.value
+              );
             }}
             className="input-field"
-            placeholder="Например: Математика, вариант 1"
+            placeholder="Например: Вариант 1"
             minLength={2}
             maxLength={500}
+            disabled={saving}
             required
             autoFocus
           />
 
           <p className="mt-1.5 text-xs text-gray-500">
-            Это название всего варианта, а не отдельного
-            вопроса.
+            Предмет и класс уже заданы отдельно,
+            поэтому достаточно указать название
+            или номер варианта.
           </p>
         </div>
 
@@ -272,11 +456,14 @@ export default function VariantCreatePage() {
             id="description"
             value={description}
             onChange={(event) => {
-              setDescription(event.target.value);
+              setDescription(
+                event.target.value
+              );
             }}
             className="input-field min-h-28 resize-y"
             placeholder="Краткое служебное описание варианта"
             maxLength={2000}
+            disabled={saving}
           />
 
           <p className="mt-1 text-right text-xs text-gray-400">
@@ -287,12 +474,7 @@ export default function VariantCreatePage() {
         <div className="flex flex-wrap gap-3 border-t border-gray-200 pt-5">
           <button
             type="submit"
-            disabled={
-              saving ||
-              loadingSubject ||
-              subjectMissing ||
-              title.trim().length < 2
-            }
+            disabled={formInvalid}
             className="btn-primary"
           >
             <Save className="h-4 w-4" />

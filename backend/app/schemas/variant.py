@@ -27,6 +27,11 @@ class VariantCreate(BaseModel):
         default=None,
         max_length=2000,
     )
+    grade: int = Field(
+    ge=1,
+    le=12,
+    description="Класс обучения, от 1 до 12",
+    )
 
     @field_validator("title")
     @classmethod
@@ -70,6 +75,12 @@ class VariantUpdate(BaseModel):
     description: str | None = Field(
         default=None,
         max_length=2000,
+    )
+
+    grade: int | None = Field(
+    default=None,
+    ge=1,
+    le=12,
     )
 
     @field_validator("title")
@@ -176,6 +187,8 @@ class VariantRead(BaseModel):
     title: str
     description: str | None
 
+    grade: int | None = None
+
     subject_id: int | None
     developer_id: int
 
@@ -223,6 +236,8 @@ class VariantQueueItem(BaseModel):
     title: str
     description: str | None
 
+    grade: int | None = None
+
     subject_id: int | None
 
     developer_id: int
@@ -262,6 +277,9 @@ class VariantReviewResult(BaseModel):
 
     id: int
     title: str
+
+    grade: int | None = None
+
     status: VariantStatus
 
     reviewer_id: int | None
@@ -291,6 +309,8 @@ class CuratorVariantItem(BaseModel):
     id: int
     title: str
     description: str | None
+
+    grade: int | None = None
 
     subject_id: int | None
 
@@ -344,6 +364,9 @@ class VariantPublishResult(BaseModel):
 
     id: int
     title: str
+
+    grade: int | None = None
+
     status: VariantStatus
 
     curator_id: int | None

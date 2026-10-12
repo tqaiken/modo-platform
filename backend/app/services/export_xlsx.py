@@ -756,6 +756,7 @@ def generate_variants_registry_xlsx(
         "Название",
         "Описание",
         "Предмет",
+        "Класс",
         "Разработчик",
         "Верификатор",
         "Рецензия верификатора",
@@ -775,6 +776,7 @@ def generate_variants_registry_xlsx(
         35,
         45,
         24,
+        12,
         26,
         26,
         50,
@@ -799,6 +801,7 @@ def generate_variants_registry_xlsx(
         "ID варианта",
         "Название варианта",
         "Предмет",
+        "Класс",
         "№ вопроса",
         "ID вопроса",
         "Код ОРО",
@@ -822,6 +825,7 @@ def generate_variants_registry_xlsx(
         14,
         30,
         22,
+        12,
         12,
         12,
         16,
@@ -901,6 +905,11 @@ def generate_variants_registry_xlsx(
                 or "",
                 get_subject_title(
                     variant
+                ),
+                getattr(
+                    variant,
+                    "grade",
+                    None,
                 ),
                 get_user_name(
                     getattr(
@@ -1002,6 +1011,11 @@ def generate_variants_registry_xlsx(
                         variant
                     ),
                     getattr(
+                        variant,
+                        "grade",
+                        None,
+                    ),
+                    getattr(
                         question,
                         "order_number",
                         "",
@@ -1084,7 +1098,7 @@ def generate_variants_registry_xlsx(
             correct_answer_cell = (
                 questions_sheet.cell(
                     row=question_row_index,
-                    column=16,
+                    column=17,
                 )
             )
 

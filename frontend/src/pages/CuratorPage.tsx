@@ -54,6 +54,7 @@ interface CuratorVariant {
   id: number;
   title: string;
   description: string | null;
+  grade: number | null;
   subject_id: number | null;
   developer_id: number;
   developer_name: string;
@@ -1116,20 +1117,23 @@ const loadVariantQuestions = async (
                         )}
                       </span>
 
+                      <span>
+                        Класс:{" "}
+                        {variant.grade === null
+                          ? "не указан"
+                          : `${variant.grade} класс`}
+                      </span>
+
                       <span className="inline-flex items-center gap-1.5">
                         <FileQuestion className="h-3.5 w-3.5" />
 
                         Вопросов:{" "}
-                        {
-                          variant.question_count
-                        }
+                        {variant.question_count}
                       </span>
 
                       <span>
                         Разработчик:{" "}
-                        {
-                          variant.developer_name
-                        }
+                        {variant.developer_name}
                       </span>
 
                       {variant.approved_at && (
